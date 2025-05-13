@@ -76,7 +76,11 @@ Based on the information provided, do the following:
 4.  Provide a concise outcome message for the user, explaining the next steps based on the urgency.
     - If urgency is 'Urgent', the outcome should stress seeking immediate medical attention.
     - If urgency is 'Non-Urgent', the outcome should suggest monitoring or self-care.
-    - If urgency is 'Appointment Needed', the outcome should clearly state this and suggest considering an appointment. Your 'nextQuestion' should then be something like "Would you like assistance with scheduling an appointment, or would you prefer to manage this yourself?". Your 'quickReplies' must include options like "Help schedule appointment", "I'll manage it", and possibly "More information".
+    - If urgency is 'Appointment Needed':
+        - The 'outcome' MUST be a concise statement explaining *why* an appointment is recommended based on the conversation so far, and that this is the current assessment. For example: "Based on your reported severe and constant pain, an appointment is recommended for further evaluation." or "Given the duration of your symptoms, scheduling an appointment would be a good next step." Do NOT ask for more information in the 'outcome' if an appointment is already being recommended.
+        - Your 'nextQuestion' MUST then be "Would you like assistance with scheduling an appointment, or would you prefer to manage this yourself?".
+        - Your 'quickReplies' MUST include "Help schedule appointment", "I'll manage it myself". You can add one more relevant option if appropriate, like "Tell me more about why".
+
 
 Your response MUST be a single JSON object. The JSON object must conform to the following structure:
 {
@@ -87,8 +91,8 @@ Your response MUST be a single JSON object. The JSON object must conform to the 
 }
 
 Focus on asking one clear question at a time. Do not ask multiple questions in \`nextQuestion\`.
-Ensure the \`outcome\` is conclusive if the urgency is 'Urgent' or if you believe sufficient information has been gathered.
-If more information is needed, the \`nextQuestion\` should aim to gather that information, and you must still provide relevant quick replies.
+Ensure the \`outcome\` is conclusive if the urgency is 'Urgent' or if you believe sufficient information has been gathered (especially for 'Appointment Needed' case).
+If more information is needed for 'Non-Urgent' cases, the \`nextQuestion\` should aim to gather that information, and you must still provide relevant quick replies.
 `,
 });
 
@@ -100,7 +104,6 @@ const intelligentTriageFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await triagePrompt(input);
-    // Schema now guarantees quickReplies is an array of 2-4 strings.
     return output!;
   }
 );

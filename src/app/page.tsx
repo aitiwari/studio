@@ -157,24 +157,23 @@ export default function HealthAssistPage() {
     const currentActiveQuickReplies = activeQuickReplies; 
     setActiveQuickReplies(undefined); 
 
-    // Handle direct booking initiation from AI's quick replies (if not using our custom buttons)
+    // Handle direct booking initiation from AI's quick replies
     if (!showAppointmentDecisionButtons && (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule"))) {
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
         );
-        // Check if this responseText was one of the AI's provided quick replies
         const wasQuickReply = currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase());
 
         if (relevantContextMessage || wasQuickReply) {
             setAwaitingEmailForBooking(true);
             addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
             setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address.`]);
-            return; // Stop further processing, wait for email
+            return; 
         }
     }
 
-    // Handle "I'll manage myself" from AI's quick replies (if not using our custom buttons)
-    if (!showAppointmentDecisionButtons && responseText.toLowerCase().includes("i'll manage myself")) {
+    // Handle "I'll manage myself" from AI's quick replies
+    if (!showAppointmentDecisionButtons && responseText.toLowerCase().includes("i'll manage it")) { // Changed from "i'll manage myself" to match common quick reply
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
         );
@@ -184,7 +183,7 @@ export default function HealthAssistPage() {
             addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
             setIsTriageComplete(true);
             setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Okay. Please monitor your symptoms...`]);
-            return; // Stop further processing, triage ends.
+            return; 
         }
     }
     
@@ -217,7 +216,6 @@ export default function HealthAssistPage() {
       let shouldCompleteAiQuestioningPhase = false;
 
       if (isCurrentlyAskingAboutBooking) {
-        // AI is handling booking question, use its quick replies
         setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
         shouldCompleteAiQuestioningPhase = false; 
       } else if (currentAiResponse.urgency === 'Urgent') {
@@ -225,8 +223,6 @@ export default function HealthAssistPage() {
       } else if (currentTurn + 1 >= MAX_CONVERSATION_TURNS) {
         shouldCompleteAiQuestioningPhase = true;
       } else if (currentAiResponse.urgency === 'Appointment Needed') {
-        // AI said "Appointment Needed" but is NOT asking about booking.
-        // We will complete this AI questioning phase and trigger our custom buttons.
         shouldCompleteAiQuestioningPhase = true;
       } else { // Non-Urgent
         if (isOutcomeFinalSounding || (hasQuestionEnded && currentAiResponse.nextQuestion.trim() !== "")) {
@@ -240,16 +236,14 @@ export default function HealthAssistPage() {
         if (currentAiResponse.urgency === 'Appointment Needed' && !isCurrentlyAskingAboutBooking) {
           setShowAppointmentDecisionButtons(true);
           setActiveQuickReplies(undefined); 
-          setIsTriageComplete(false); // Not fully complete, user needs to decide
+          setIsTriageComplete(false); 
         } else {
           setIsTriageComplete(true);
           setActiveQuickReplies(undefined);
         }
       } else if (!isCurrentlyAskingAboutBooking) {
-         // If not completing, and AI is not asking about booking, set its quick replies
          setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       }
-      // If AI is asking about booking, its quick replies are already set by the isCurrentlyAskingAboutBooking block.
 
 
     } catch (error) {
@@ -273,18 +267,20 @@ export default function HealthAssistPage() {
   
     const bookingConversationSummary = conversationHistory.join('\n') + `\nUser: My email is ${emailForBooking}`;
 
+    // TODO: Potentially extract preferredDate from conversationHistory if user mentioned it.
+    // For now, preferredDate is not explicitly passed from the UI to bookAppointmentAction.
     const bookingInput: BookAppointmentInput = {
       userEmail: emailForBooking,
       symptoms: initialSymptom,
       conversationSummary: bookingConversationSummary,
+      // preferredDate: extractedPreferredDate, // This would be an enhancement
     };
 
     try {
       const bookingResponse = await bookAppointmentAction(bookingInput);
       setMessages(prev => prev.filter(m => !m.isLoading)); 
-      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage, aiResponse: { 
-        nextQuestion: '', quickReplies: [], urgency: 'Appointment Needed', outcome: bookingResponse.confirmationMessage
-      }}); 
+      // Display booking confirmation as a simple system message without aiResponse to avoid incorrect title
+      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage }); 
       
       setAwaitingEmailForBooking(false);
       setEmailForBooking('');
