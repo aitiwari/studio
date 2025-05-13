@@ -1,3 +1,4 @@
+
 'use server';
 import { intelligentTriage, TriageInput, TriageOutput } from '@/ai/flows/ai-triage';
 
@@ -11,8 +12,10 @@ export async function getAiTriageResponse(symptom: string, previousResponses?: s
     return response;
   } catch (error) {
     console.error("Error calling AI triage flow:", error);
+    // Ensure the error response conforms to TriageOutput schema, especially quickReplies
     return {
       nextQuestion: "I'm sorry, but I encountered an issue processing your request. Please try again later or contact support if the problem persists.",
+      quickReplies: ["Okay", "Try again later"], // Default quick replies on error
       urgency: "Non-Urgent", // Default to Non-Urgent on error to be safe
       outcome: "Could not complete triage due to a system error. Please seek advice from a healthcare professional if you have concerns."
     };

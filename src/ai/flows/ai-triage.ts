@@ -6,7 +6,7 @@
  * @fileOverview This file defines a Genkit flow for intelligent symptom triage.
  *
  * The flow takes initial symptoms as input and asks relevant questions to determine the urgency of the situation.
- * It can also provide quick reply options for the user.
+ * It must always provide quick reply options for the user.
  *
  * @module ai/flows/ai-triage
  *
@@ -32,9 +32,10 @@ const TriageOutputSchema = z.object({
   nextQuestion: z.string().describe('The next relevant question to ask the user. This field is always required.'),
   quickReplies: z
     .array(z.string())
-    .optional()
+    .min(2, "Must provide at least 2 quick replies.")
+    .max(4, "Must provide no more than 4 quick replies.")
     .describe(
-      'Optional array of 2-4 short strings for quick user responses. Omit or use empty array if not applicable to the question.'
+      'Required array of 2-4 short strings for quick user responses. These should be directly relevant to the question asked.'
     ),
   urgency: z
     .enum(['Urgent', 'Non-Urgent', 'Appointment Needed'])
@@ -70,21 +71,21 @@ Conversation history:
 
 Based on the information provided, do the following:
 1.  Ask the *next most relevant question* to help clarify the user's condition.
-2.  If your question can be reasonably answered with simple choices, provide 2 to 4 short quick reply options (e.g., "Yes", "No", "Mild", "Severe"). These replies should be directly relevant to the question you are asking. If quick replies are not suitable for the question, omit the 'quickReplies' field or provide an empty array.
+2.  You MUST provide 2 to 4 short quick reply options (e.g., "Yes", "No", "Mild", "Severe") that are directly relevant to the question you are asking. The 'quickReplies' field is always required.
 3.  Determine the urgency: 'Urgent', 'Non-Urgent', or 'Appointment Needed'.
 4.  Provide a concise outcome message for the user, explaining the next steps based on the urgency.
 
 Your response MUST be a single JSON object. The JSON object must conform to the following structure:
 {
   "nextQuestion": "string (The next question for the user. This field is always required.)",
-  "quickReplies": ["string", "..."] (Optional array of 2-4 short strings for quick user responses. Omit or use empty array if not applicable to the question.)",
+  "quickReplies": ["string", "string", "..."] (Required array of 2-4 short strings for quick user responses, directly relevant to the nextQuestion.)",
   "urgency": "'Urgent' | 'Non-Urgent' | 'Appointment Needed' (The assessed urgency. This field is always required.)",
   "outcome": "string (Guidance for the user. This field is always required.)"
 }
 
 Focus on asking one clear question at a time. Do not ask multiple questions in \`nextQuestion\`.
 Ensure the \`outcome\` is conclusive if the urgency is 'Urgent' or if you believe sufficient information has been gathered.
-If more information is needed, the \`nextQuestion\` should aim to gather that information.
+If more information is needed, the \`nextQuestion\` should aim to gather that information, and you must still provide relevant quick replies.
 `,
 });
 
@@ -96,11 +97,7 @@ const intelligentTriageFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await triagePrompt(input);
-    // Ensure quickReplies is an array if present, or undefined otherwise.
-    // Some models might return null for an optional array if not explicitly told to use empty array.
-    if (output && output.quickReplies === null) {
-      output.quickReplies = undefined;
-    }
+    // Schema now guarantees quickReplies is an array of 2-4 strings.
     return output!;
   }
 );
