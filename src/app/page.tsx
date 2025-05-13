@@ -8,14 +8,14 @@ import {
   Battery, 
   CircleAlert, 
   BotIcon,
-  Mic2, // For Sore Throat
-  Waves, // For Nausea/Vomiting
-  Orbit, // For Dizziness
-  AppWindow, // For Skin Rash
-  Wind, // For Shortness of Breath
-  HeartPulse, // For Chest Pain
-  PersonStanding, // For Back Pain
-  CloudDrizzle // For Runny Nose/Congestion
+  Mic2, 
+  Waves, 
+  Orbit, 
+  AppWindow, 
+  Wind, 
+  HeartPulse, 
+  PersonStanding, 
+  CloudDrizzle 
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse } from './actions';
@@ -65,7 +65,7 @@ const commonSymptoms: SymptomOption[] = [
   { name: "Runny Nose / Congestion", icon: CloudDrizzle },
 ];
 
-const MAX_CONVERSATION_TURNS = 5; // Max number of user responses after initial symptom
+const MAX_CONVERSATION_TURNS = 5; 
 
 export default function HealthAssistPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -74,12 +74,12 @@ export default function HealthAssistPage() {
   const [conversationHistory, setConversationHistory] = useState<string[]>([]);
   const [isTriageComplete, setIsTriageComplete] = useState(false);
   const [currentTurn, setCurrentTurn] = useState(0);
+  const [activeQuickReplies, setActiveQuickReplies] = useState<string[] | undefined>(undefined);
 
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Initialize with a welcome message and symptom selection
     resetChat();
   }, []);
 
@@ -101,6 +101,7 @@ export default function HealthAssistPage() {
     setConversationHistory([]);
     setIsTriageComplete(false);
     setCurrentTurn(0);
+    setActiveQuickReplies(undefined);
   };
   
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
@@ -111,17 +112,20 @@ export default function HealthAssistPage() {
     addMessage({ sender: 'user', text: symptomName });
     setInitialSymptom(symptomName);
     setIsLoading(true);
+    setActiveQuickReplies(undefined); // Clear any previous quick replies
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     try {
       const aiResponse = await getAiTriageResponse(symptomName);
-      setMessages(prev => prev.filter(m => !m.isLoading)); // Remove thinking message
+      setMessages(prev => prev.filter(m => !m.isLoading)); 
       addMessage({ sender: 'bot', text: aiResponse.nextQuestion, aiResponse });
+      setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       setConversationHistory([`User: ${symptomName}`, `AI: ${aiResponse.nextQuestion}`]);
       
       if (aiResponse.urgency === 'Urgent' || aiResponse.outcome.toLowerCase().includes("seek immediate medical attention")) {
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
+        setActiveQuickReplies(undefined);
       }
     } catch (error) {
       console.error("Symptom selection error:", error);
@@ -138,30 +142,31 @@ export default function HealthAssistPage() {
 
     addMessage({ sender: 'user', text: responseText });
     setIsLoading(true);
+    setActiveQuickReplies(undefined); // Clear quick replies upon user response
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     const currentConversation = [...conversationHistory, `User: ${responseText}`].join('\n');
 
     try {
       const aiResponse = await getAiTriageResponse(initialSymptom, currentConversation);
-      setMessages(prev => prev.filter(m => !m.isLoading)); // Remove thinking message
+      setMessages(prev => prev.filter(m => !m.isLoading)); 
       addMessage({ sender: 'bot', text: aiResponse.nextQuestion, aiResponse });
+      setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       
       const newHistory = [...conversationHistory, `User: ${responseText}`, `AI: ${aiResponse.nextQuestion}`];
       setConversationHistory(newHistory);
       setCurrentTurn(prev => prev + 1);
 
-      // Check for triage completion
       const isUrgent = aiResponse.urgency === 'Urgent';
       const isOutcomeFinalSounding = aiResponse.outcome.toLowerCase().includes("seek immediate medical attention") || 
                                    aiResponse.outcome.toLowerCase().includes("final recommendation") ||
                                    aiResponse.outcome.toLowerCase().includes("my assessment is");
       const hasQuestionEnded = !aiResponse.nextQuestion.trim().endsWith('?');
 
-
       if (isUrgent || isOutcomeFinalSounding || currentTurn + 1 >= MAX_CONVERSATION_TURNS || hasQuestionEnded) {
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
+        setActiveQuickReplies(undefined);
       }
     } catch (error) {
       console.error("User response error:", error);
@@ -175,6 +180,8 @@ export default function HealthAssistPage() {
   
   const showSymptomSelector = !initialSymptom && !isTriageComplete;
   const showChatInput = initialSymptom && !isTriageComplete && !isLoading;
+  const showQuickReplies = activeQuickReplies && !isTriageComplete && !isLoading;
+
 
   return (
     <div className="flex flex-col h-screen bg-background max-w-4xl mx-auto shadow-2xl rounded-lg overflow-hidden">
@@ -208,6 +215,26 @@ export default function HealthAssistPage() {
         </div>
       )}
 
+      {showQuickReplies && (
+         <div className="p-4 bg-card border-t">
+          <p className="text-sm text-muted-foreground mb-2 text-center">Or select a quick response:</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {activeQuickReplies.map((reply) => (
+              <Button
+                key={reply}
+                variant="outline"
+                size="sm"
+                onClick={() => handleUserResponse(reply)}
+                disabled={isLoading}
+                className="shadow-sm hover:shadow-md transition-shadow"
+              >
+                {reply}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showChatInput && (
         <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
       )}
@@ -223,4 +250,3 @@ export default function HealthAssistPage() {
     </div>
   );
 }
-
