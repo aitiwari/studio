@@ -2,7 +2,21 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Thermometer, Brain, Battery, CircleAlert, BotIcon } from 'lucide-react';
+import { 
+  Thermometer, 
+  Brain, 
+  Battery, 
+  CircleAlert, 
+  BotIcon,
+  Mic2, // For Sore Throat
+  Waves, // For Nausea/Vomiting
+  Orbit, // For Dizziness
+  AppWindow, // For Skin Rash
+  Wind, // For Shortness of Breath
+  HeartPulse, // For Chest Pain
+  PersonStanding, // For Back Pain
+  CloudDrizzle // For Runny Nose/Congestion
+} from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse } from './actions';
 import { ChatMessage } from '@/components/chat/ChatMessage';
@@ -41,6 +55,14 @@ const commonSymptoms: SymptomOption[] = [
   { name: "Headache", icon: Brain },
   { name: "Fatigue", icon: Battery },
   { name: "Stomach Pain", icon: CircleAlert },
+  { name: "Sore Throat", icon: Mic2 },
+  { name: "Nausea / Vomiting", icon: Waves },
+  { name: "Dizziness", icon: Orbit },
+  { name: "Skin Rash", icon: AppWindow },
+  { name: "Shortness of Breath", icon: Wind },
+  { name: "Chest Pain", icon: HeartPulse },
+  { name: "Back Pain", icon: PersonStanding },
+  { name: "Runny Nose / Congestion", icon: CloudDrizzle },
 ];
 
 const MAX_CONVERSATION_TURNS = 5; // Max number of user responses after initial symptom
