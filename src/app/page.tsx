@@ -18,7 +18,8 @@ import {
   CloudDrizzle 
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
-import { getAiTriageResponse } from './actions';
+import { getAiTriageResponse, bookAppointmentAction } from './actions';
+import type { BookAppointmentInput } from '@/ai/flows/book-appointment-flow';
 import { ChatMessage } from '@/components/chat/ChatMessage';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { SymptomButton } from '@/components/chat/SymptomButton';
@@ -26,6 +27,8 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from "@/hooks/use-toast";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 // Inline SVG for Lungs icon as it's not in lucide-react
 const LungsIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -76,6 +79,11 @@ export default function HealthAssistPage() {
   const [currentTurn, setCurrentTurn] = useState(0);
   const [activeQuickReplies, setActiveQuickReplies] = useState<string[] | undefined>(undefined);
 
+  const [awaitingEmailForBooking, setAwaitingEmailForBooking] = useState(false);
+  const [emailForBooking, setEmailForBooking] = useState('');
+  const [isLoadingBooking, setIsLoadingBooking] = useState(false);
+
+
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -102,6 +110,9 @@ export default function HealthAssistPage() {
     setIsTriageComplete(false);
     setCurrentTurn(0);
     setActiveQuickReplies(undefined);
+    setAwaitingEmailForBooking(false);
+    setEmailForBooking('');
+    setIsLoadingBooking(false);
   };
   
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
@@ -112,7 +123,7 @@ export default function HealthAssistPage() {
     addMessage({ sender: 'user', text: symptomName });
     setInitialSymptom(symptomName);
     setIsLoading(true);
-    setActiveQuickReplies(undefined); // Clear any previous quick replies
+    setActiveQuickReplies(undefined); 
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     try {
@@ -138,11 +149,25 @@ export default function HealthAssistPage() {
   };
 
   const handleUserResponse = async (responseText: string) => {
-    if (!initialSymptom || isTriageComplete) return;
+    if (!initialSymptom || isTriageComplete || awaitingEmailForBooking) return;
 
     addMessage({ sender: 'user', text: responseText });
+
+    const latestBotMessage = messages.filter(m => m.sender === 'bot' && m.aiResponse).pop();
+    const latestBotAiResponse = latestBotMessage?.aiResponse;
+
+    if (latestBotAiResponse?.urgency === 'Appointment Needed' && 
+        (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule"))) {
+      setAwaitingEmailForBooking(true);
+      setActiveQuickReplies(undefined); 
+      addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
+      setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address.`]);
+      setIsLoading(false); 
+      return; 
+    }
+    
     setIsLoading(true);
-    setActiveQuickReplies(undefined); // Clear quick replies upon user response
+    setActiveQuickReplies(undefined); 
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     const currentConversation = [...conversationHistory, `User: ${responseText}`].join('\n');
@@ -161,9 +186,9 @@ export default function HealthAssistPage() {
       const isOutcomeFinalSounding = aiResponse.outcome.toLowerCase().includes("seek immediate medical attention") || 
                                    aiResponse.outcome.toLowerCase().includes("final recommendation") ||
                                    aiResponse.outcome.toLowerCase().includes("my assessment is");
-      const hasQuestionEnded = !aiResponse.nextQuestion.trim().endsWith('?'); // If nextQuestion is not a question, assume triage can end.
+      const hasQuestionEnded = !aiResponse.nextQuestion.trim().endsWith('?'); 
 
-      if (isUrgent || isOutcomeFinalSounding || currentTurn + 1 >= MAX_CONVERSATION_TURNS || (hasQuestionEnded && aiResponse.nextQuestion.trim() !== "")) {
+      if (isUrgent || isOutcomeFinalSounding || currentTurn + 1 >= MAX_CONVERSATION_TURNS || (hasQuestionEnded && aiResponse.nextQuestion.trim() !== "" && aiResponse.urgency !== 'Appointment Needed')) {
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
         setActiveQuickReplies(undefined);
@@ -177,10 +202,52 @@ export default function HealthAssistPage() {
       setIsLoading(false);
     }
   };
+
+  const handleEmailSubmitForBooking = async () => {
+    if (!emailForBooking.trim() || !initialSymptom) {
+      toast({ title: "Email Required", description: "Please enter a valid email address.", variant: "destructive" });
+      return;
+    }
+    setIsLoadingBooking(true);
+    addMessage({ sender: 'user', text: `My email for booking: ${emailForBooking}` });
+    addMessage({ sender: 'bot', text: 'Attempting to book your appointment...', isLoading: true });
   
-  const showSymptomSelector = !initialSymptom && !isTriageComplete;
-  const showQuickReplies = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading;
-  const showChatInput = initialSymptom && !isTriageComplete && !isLoading && !showQuickReplies;
+    // Create a summary of the conversation for the booking flow
+    // This could be the full history or a condensed version
+    const bookingConversationSummary = conversationHistory.join('\n') + `\nUser: My email is ${emailForBooking}`;
+
+    const bookingInput: BookAppointmentInput = {
+      userEmail: emailForBooking,
+      symptoms: initialSymptom,
+      conversationSummary: bookingConversationSummary,
+    };
+
+    try {
+      const bookingResponse = await bookAppointmentAction(bookingInput);
+      setMessages(prev => prev.filter(m => !m.isLoading)); 
+      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage }); 
+      // Optionally, could add bookingResponse itself to the message if ChatMessage is adapted to display it
+      
+      setAwaitingEmailForBooking(false);
+      setEmailForBooking('');
+      setIsTriageComplete(true); 
+      setActiveQuickReplies(undefined);
+      setConversationHistory(prev => [...prev, `AI: ${bookingResponse.confirmationMessage}`]);
+
+
+    } catch (error) {
+      console.error("Booking submission error:", error);
+      setMessages(prev => prev.filter(m => !m.isLoading));
+      addMessage({ sender: 'bot', text: "Sorry, there was an error trying to book your appointment. Please try again later or contact a clinic directly."});
+      toast({ title: "Booking Error", description: "Could not book the appointment at this time.", variant: "destructive" });
+    } finally {
+      setIsLoadingBooking(false);
+    }
+  };
+  
+  const showSymptomSelector = !initialSymptom && !isTriageComplete && !awaitingEmailForBooking;
+  const showQuickReplies = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking;
+  const showChatInput = initialSymptom && !isTriageComplete && !isLoading && !showQuickReplies && !awaitingEmailForBooking;
 
 
   return (
@@ -198,6 +265,33 @@ export default function HealthAssistPage() {
       </ScrollArea>
 
       <Separator />
+
+      {awaitingEmailForBooking && !isTriageComplete && (
+        <div className="p-4 border-t bg-card space-y-3">
+          <Label htmlFor="emailForBookingInput" className="text-sm font-medium text-foreground">
+            Enter your email address for appointment scheduling:
+          </Label>
+          <div className="flex items-center space-x-2">
+            <Input
+              id="emailForBookingInput"
+              type="email"
+              value={emailForBooking}
+              onChange={(e) => setEmailForBooking(e.target.value)}
+              placeholder="your.email@example.com"
+              disabled={isLoadingBooking}
+              className="flex-grow rounded-full shadow-sm"
+              aria-label="Email for booking"
+            />
+            <Button 
+              onClick={handleEmailSubmitForBooking} 
+              disabled={isLoadingBooking || !emailForBooking.trim()}
+              className="rounded-full bg-accent hover:bg-accent/90 text-accent-foreground"
+            >
+              {isLoadingBooking ? "Submitting..." : "Submit Email"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {showSymptomSelector && (
         <div className="p-4 bg-background">
@@ -239,7 +333,7 @@ export default function HealthAssistPage() {
         <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
       )}
       
-      {isTriageComplete && (
+      {isTriageComplete && !awaitingEmailForBooking && (
         <div className="p-4 bg-background border-t text-center">
           <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start a new session if needed.</p>
           <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">

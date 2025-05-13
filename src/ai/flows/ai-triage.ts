@@ -74,6 +74,9 @@ Based on the information provided, do the following:
 2.  You MUST provide 2 to 4 short quick reply options (e.g., "Yes", "No", "Mild", "Severe") that are directly relevant to the question you are asking. The 'quickReplies' field is always required.
 3.  Determine the urgency: 'Urgent', 'Non-Urgent', or 'Appointment Needed'.
 4.  Provide a concise outcome message for the user, explaining the next steps based on the urgency.
+    - If urgency is 'Urgent', the outcome should stress seeking immediate medical attention.
+    - If urgency is 'Non-Urgent', the outcome should suggest monitoring or self-care.
+    - If urgency is 'Appointment Needed', the outcome should clearly state this and suggest considering an appointment. Your 'nextQuestion' should then be something like "Would you like assistance with scheduling an appointment, or would you prefer to manage this yourself?". Your 'quickReplies' must include options like "Help schedule appointment", "I'll manage it", and possibly "More information".
 
 Your response MUST be a single JSON object. The JSON object must conform to the following structure:
 {
