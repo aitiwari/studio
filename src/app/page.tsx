@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -133,7 +132,7 @@ export default function HealthAssistPage() {
       setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       setConversationHistory([`User: ${symptomName}`, `AI: ${aiResponse.nextQuestion}`]);
       
-      if (aiResponse.urgency === 'Urgent' || aiResponse.outcome.toLowerCase().includes("seek immediate medical attention")) {
+      if (aiResponse.urgency === 'Urgent') { // Only complete for 'Urgent' here, Appointment Needed has a flow.
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
         setActiveQuickReplies(undefined);
@@ -149,7 +148,7 @@ export default function HealthAssistPage() {
   };
 
   const handleUserResponse = async (responseText: string) => {
-    if (!initialSymptom || isTriageComplete || awaitingEmailForBooking) return;
+    if (!initialSymptom || isTriageComplete || awaitingEmailForBooking && !isLoadingBooking) return;
 
     addMessage({ sender: 'user', text: responseText });
 
@@ -182,17 +181,52 @@ export default function HealthAssistPage() {
       setConversationHistory(newHistory);
       setCurrentTurn(prev => prev + 1);
 
-      const isUrgent = aiResponse.urgency === 'Urgent';
-      const isOutcomeFinalSounding = aiResponse.outcome.toLowerCase().includes("seek immediate medical attention") || 
-                                   aiResponse.outcome.toLowerCase().includes("final recommendation") ||
-                                   aiResponse.outcome.toLowerCase().includes("my assessment is");
-      const hasQuestionEnded = !aiResponse.nextQuestion.trim().endsWith('?'); 
+      // Determine if triage should be marked complete
+      const currentAiResponse = aiResponse;
+      const isOutcomeFinalSounding = currentAiResponse.outcome.toLowerCase().includes("seek immediate medical attention") ||
+                                   currentAiResponse.outcome.toLowerCase().includes("final recommendation") ||
+                                   currentAiResponse.outcome.toLowerCase().includes("my assessment is");
+      const hasQuestionEnded = !currentAiResponse.nextQuestion.trim().endsWith('?');
 
-      if (isUrgent || isOutcomeFinalSounding || currentTurn + 1 >= MAX_CONVERSATION_TURNS || (hasQuestionEnded && aiResponse.nextQuestion.trim() !== "" && aiResponse.urgency !== 'Appointment Needed')) {
-        addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
+      const isCurrentlyAskingAboutBooking = (currentAiResponse.urgency === 'Appointment Needed') &&
+                                        (currentAiResponse.nextQuestion.toLowerCase().includes("schedule") ||
+                                         currentAiResponse.nextQuestion.toLowerCase().includes("book") ||
+                                         currentAiResponse.nextQuestion.toLowerCase().includes("assistance") ||
+                                         currentAiResponse.nextQuestion.toLowerCase().includes("manage this yourself"));
+      
+      let shouldCompleteTriage = false;
+
+      if (isCurrentlyAskingAboutBooking) {
+        // If AI is currently asking about booking, do not complete triage yet.
+        // Let the user respond to the booking question.
+        shouldCompleteTriage = false;
+      } else if (currentAiResponse.urgency === 'Urgent') {
+        shouldCompleteTriage = true;
+      } else if (currentTurn + 1 >= MAX_CONVERSATION_TURNS) {
+        shouldCompleteTriage = true;
+      } else if (currentAiResponse.urgency === 'Appointment Needed') {
+        // Not asking about booking, but urgency is Appointment Needed.
+        // This means user likely declined help, or AI is giving a follow-up.
+        // Complete if conversation seems over (e.g. AI gives empty/non-question).
+        if (hasQuestionEnded || currentAiResponse.nextQuestion.trim() === "") {
+          shouldCompleteTriage = true;
+        }
+        // Also, if the outcome is very final (and not asking about booking), complete.
+        if (isOutcomeFinalSounding) { 
+            shouldCompleteTriage = true;
+        }
+      } else { // Non-Urgent
+        if (isOutcomeFinalSounding || (hasQuestionEnded && currentAiResponse.nextQuestion.trim() !== "")) {
+          shouldCompleteTriage = true;
+        }
+      }
+
+      if (shouldCompleteTriage) {
+        addMessage({ sender: 'system', text: currentAiResponse.outcome, aiResponse: currentAiResponse });
         setIsTriageComplete(true);
         setActiveQuickReplies(undefined);
       }
+
     } catch (error) {
       console.error("User response error:", error);
       setMessages(prev => prev.filter(m => !m.isLoading));
@@ -212,8 +246,6 @@ export default function HealthAssistPage() {
     addMessage({ sender: 'user', text: `My email for booking: ${emailForBooking}` });
     addMessage({ sender: 'bot', text: 'Attempting to book your appointment...', isLoading: true });
   
-    // Create a summary of the conversation for the booking flow
-    // This could be the full history or a condensed version
     const bookingConversationSummary = conversationHistory.join('\n') + `\nUser: My email is ${emailForBooking}`;
 
     const bookingInput: BookAppointmentInput = {
@@ -226,7 +258,6 @@ export default function HealthAssistPage() {
       const bookingResponse = await bookAppointmentAction(bookingInput);
       setMessages(prev => prev.filter(m => !m.isLoading)); 
       addMessage({ sender: 'system', text: bookingResponse.confirmationMessage }); 
-      // Optionally, could add bookingResponse itself to the message if ChatMessage is adapted to display it
       
       setAwaitingEmailForBooking(false);
       setEmailForBooking('');
@@ -344,4 +375,3 @@ export default function HealthAssistPage() {
     </div>
   );
 }
-
