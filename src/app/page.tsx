@@ -81,6 +81,7 @@ export default function HealthAssistPage() {
   const [awaitingEmailForBooking, setAwaitingEmailForBooking] = useState(false);
   const [emailForBooking, setEmailForBooking] = useState('');
   const [isLoadingBooking, setIsLoadingBooking] = useState(false);
+  const [showAppointmentDecisionButtons, setShowAppointmentDecisionButtons] = useState(false);
 
 
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
@@ -112,6 +113,7 @@ export default function HealthAssistPage() {
     setAwaitingEmailForBooking(false);
     setEmailForBooking('');
     setIsLoadingBooking(false);
+    setShowAppointmentDecisionButtons(false);
   };
   
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
@@ -123,6 +125,7 @@ export default function HealthAssistPage() {
     setInitialSymptom(symptomName);
     setIsLoading(true);
     setActiveQuickReplies(undefined); 
+    setShowAppointmentDecisionButtons(false);
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     try {
@@ -136,9 +139,6 @@ export default function HealthAssistPage() {
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
         setActiveQuickReplies(undefined);
-      } else if (aiResponse.urgency === 'Appointment Needed' && (aiResponse.nextQuestion.toLowerCase().includes("schedule") || aiResponse.nextQuestion.toLowerCase().includes("book"))) {
-        // AI is already asking about booking, its quick replies will be used.
-        // No special handling here, triage continues.
       }
     } catch (error) {
       console.error("Symptom selection error:", error);
@@ -151,35 +151,40 @@ export default function HealthAssistPage() {
   };
 
   const handleUserResponse = async (responseText: string) => {
-    if (!initialSymptom || (isTriageComplete && !awaitingEmailForBooking) || (awaitingEmailForBooking && !isLoadingBooking) ) return;
+    if (!initialSymptom || isTriageComplete || isLoading || awaitingEmailForBooking || showAppointmentDecisionButtons) return;
 
     addMessage({ sender: 'user', text: responseText });
-    const currentActiveQuickReplies = activeQuickReplies; // Capture before clearing
+    const currentActiveQuickReplies = activeQuickReplies; 
     setActiveQuickReplies(undefined); 
 
-    // Handle direct booking initiation from quick replies
-    if (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule")) {
+    // Handle direct booking initiation from AI's quick replies (if not using our custom buttons)
+    if (!showAppointmentDecisionButtons && (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule"))) {
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
         );
-        if (relevantContextMessage || currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase())) {
+        // Check if this responseText was one of the AI's provided quick replies
+        const wasQuickReply = currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase());
+
+        if (relevantContextMessage || wasQuickReply) {
             setAwaitingEmailForBooking(true);
             addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
             setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address.`]);
-            return;
+            return; // Stop further processing, wait for email
         }
     }
 
-    // Handle "I'll manage myself"
-    if (responseText.toLowerCase().includes("i'll manage myself")) {
+    // Handle "I'll manage myself" from AI's quick replies (if not using our custom buttons)
+    if (!showAppointmentDecisionButtons && responseText.toLowerCase().includes("i'll manage myself")) {
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
         );
-        if (relevantContextMessage || currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase())) {
+        const wasQuickReply = currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase());
+
+        if (relevantContextMessage || wasQuickReply) {
             addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
             setIsTriageComplete(true);
             setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Okay. Please monitor your symptoms...`]);
-            return;
+            return; // Stop further processing, triage ends.
         }
     }
     
@@ -192,7 +197,6 @@ export default function HealthAssistPage() {
       const aiResponse = await getAiTriageResponse(initialSymptom, currentConversation);
       setMessages(prev => prev.filter(m => !m.isLoading)); 
       addMessage({ sender: 'bot', text: aiResponse.nextQuestion, aiResponse });
-      setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       
       const newHistory = [...conversationHistory, `User: ${responseText}`, `AI: ${aiResponse.nextQuestion}`];
       setConversationHistory(newHistory);
@@ -213,6 +217,8 @@ export default function HealthAssistPage() {
       let shouldCompleteAiQuestioningPhase = false;
 
       if (isCurrentlyAskingAboutBooking) {
+        // AI is handling booking question, use its quick replies
+        setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
         shouldCompleteAiQuestioningPhase = false; 
       } else if (currentAiResponse.urgency === 'Urgent') {
         shouldCompleteAiQuestioningPhase = true;
@@ -220,7 +226,7 @@ export default function HealthAssistPage() {
         shouldCompleteAiQuestioningPhase = true;
       } else if (currentAiResponse.urgency === 'Appointment Needed') {
         // AI said "Appointment Needed" but is NOT asking about booking.
-        // We will complete this AI questioning phase and inject our own quick replies.
+        // We will complete this AI questioning phase and trigger our custom buttons.
         shouldCompleteAiQuestioningPhase = true;
       } else { // Non-Urgent
         if (isOutcomeFinalSounding || (hasQuestionEnded && currentAiResponse.nextQuestion.trim() !== "")) {
@@ -232,14 +238,19 @@ export default function HealthAssistPage() {
         addMessage({ sender: 'system', text: currentAiResponse.outcome, aiResponse: currentAiResponse });
 
         if (currentAiResponse.urgency === 'Appointment Needed' && !isCurrentlyAskingAboutBooking) {
-          setActiveQuickReplies(["Schedule Appointment", "I'll manage myself"]);
-          setIsTriageComplete(false); // Keep chat active for these new replies
+          setShowAppointmentDecisionButtons(true);
+          setActiveQuickReplies(undefined); 
+          setIsTriageComplete(false); // Not fully complete, user needs to decide
         } else {
           setIsTriageComplete(true);
-          setActiveQuickReplies(undefined); // Clear any AI-provided replies if truly complete
+          setActiveQuickReplies(undefined);
         }
+      } else if (!isCurrentlyAskingAboutBooking) {
+         // If not completing, and AI is not asking about booking, set its quick replies
+         setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       }
-      // If not shouldCompleteAiQuestioningPhase, AI asked another question, and its quick replies are already set.
+      // If AI is asking about booking, its quick replies are already set by the isCurrentlyAskingAboutBooking block.
+
 
     } catch (error) {
       console.error("User response error:", error);
@@ -271,7 +282,7 @@ export default function HealthAssistPage() {
     try {
       const bookingResponse = await bookAppointmentAction(bookingInput);
       setMessages(prev => prev.filter(m => !m.isLoading)); 
-      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage, aiResponse: { // Mock TriageOutput for system message styling
+      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage, aiResponse: { 
         nextQuestion: '', quickReplies: [], urgency: 'Appointment Needed', outcome: bookingResponse.confirmationMessage
       }}); 
       
@@ -279,6 +290,7 @@ export default function HealthAssistPage() {
       setEmailForBooking('');
       setIsTriageComplete(true); 
       setActiveQuickReplies(undefined);
+      setShowAppointmentDecisionButtons(false);
       setConversationHistory(prev => [...prev, `AI: ${bookingResponse.confirmationMessage}`]);
 
 
@@ -292,9 +304,9 @@ export default function HealthAssistPage() {
     }
   };
   
-  const showSymptomSelector = !initialSymptom && !isTriageComplete && !awaitingEmailForBooking;
-  const showQuickReplies = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking;
-  const showChatInput = initialSymptom && !isTriageComplete && !isLoading && !showQuickReplies && !awaitingEmailForBooking;
+  const showSymptomSelector = !initialSymptom && !isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
+  const showQuickReplies = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
+  const showChatInput = initialSymptom && !isTriageComplete && !isLoading && !showQuickReplies && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
 
 
   return (
@@ -356,6 +368,41 @@ export default function HealthAssistPage() {
         </div>
       )}
 
+      {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
+        <div className="p-4 bg-card border-t">
+          <p className="text-sm text-muted-foreground mb-3 text-center">
+            An appointment is recommended. What would you like to do?
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button
+              onClick={() => {
+                setShowAppointmentDecisionButtons(false);
+                setAwaitingEmailForBooking(true);
+                addMessage({ sender: 'user', text: "I'd like to book an appointment." });
+                addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
+                setConversationHistory(prev => [...prev, `User: Wants to book appointment`, `AI: Please provide your email address.`]);
+              }}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+            >
+              Book Now
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                addMessage({ sender: 'user', text: "I'll manage the appointment myself." });
+                addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
+                setShowAppointmentDecisionButtons(false);
+                setIsTriageComplete(true);
+                setConversationHistory(prev => [...prev, `User: I'll manage it`, `AI: Okay. Please monitor your symptoms...`]);
+              }}
+              className="shadow-md"
+            >
+              I'll Manage Myself
+            </Button>
+          </div>
+        </div>
+      )}
+
       {showQuickReplies && (
          <div className="p-4 bg-card border-t">
           <p className="text-sm text-muted-foreground mb-2 text-center">Select a response:</p>
@@ -380,7 +427,7 @@ export default function HealthAssistPage() {
         <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
       )}
       
-      {isTriageComplete && !awaitingEmailForBooking && (
+      {isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons && (
         <div className="p-4 bg-background border-t text-center">
           <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start a new session if needed.</p>
           <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
