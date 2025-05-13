@@ -16,7 +16,7 @@ import { sendEmailTool, SendEmailOutputSchema, type SendEmailOutput } from '@/ai
 const BookAppointmentInputSchema = z.object({
   userEmail: z.string().email().describe('The email address of the user booking the appointment.'),
   symptoms: z.string().describe('A summary of the symptoms reported by the user.'),
-  conversationSummary: z.string().optional().describe('A summary of the conversation leading to the booking.'),
+  conversationSummary: z.string().optional().describe('A summary of the conversation leading to the booking (complete trial details).'),
   preferredDate: z.string().optional().describe('User preferred date for the appointment, if any.'),
 });
 export type BookAppointmentInput = z.infer<typeof BookAppointmentInputSchema>;
@@ -41,32 +41,36 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<Book
 const bookingPrompt = ai.definePrompt({
   name: 'bookingPrompt',
   input: { schema: BookAppointmentInputSchema },
-  // The output of this specific prompt is just for internal processing before constructing the final flow output
   output: { 
     schema: z.object({
       internalConfirmationMessage: z.string().describe("A brief acknowledgement of the booking request. This should NOT include the simulated date or email details, as those will be added by the flow."),
       simulatedBookedDate: z.string().describe("The simulated date for the appointment, e.g., 'YYYY-MM-DD' or 'next Tuesday'."),
       emailSubject: z.string().describe("Subject line for the confirmation email."),
-      emailBody: z.string().describe("HTML body for the confirmation email."),
+      emailBody: z.string().describe("HTML body for the confirmation email, including all trial details."),
     })
   },
   tools: [sendEmailTool],
   system: `You are an appointment booking assistant. Your task is to process an appointment request, generate a confirmation message, and prepare details for a confirmation email.
 The user's email is {{userEmail}}.
 Symptoms reported: "{{symptoms}}".
-{{#if conversationSummary}}Conversation context: "{{conversationSummary}}"{{/if}}
+{{#if conversationSummary}}Complete conversation history (trial details): "{{conversationSummary}}"{{/if}}
 {{#if preferredDate}}Preferred date: "{{preferredDate}}"{{/if}}
 
-Follow these steps:
-1.  Acknowledge the booking request briefly. This will be the 'internalConfirmationMessage'. It should *not* include the simulated date or email details, as those will be added separately by the system. For example: "Okay, I'm processing your appointment request."
-2.  Simulate a booking date for 'simulatedBookedDate'. If a preferred date is given, try to use it or a date close to it. Otherwise, pick a date a few days from now.
-3.  Compose a subject line for a confirmation email.
-4.  Compose the HTML body for the confirmation email. The email should include the booked date, a summary of symptoms, and any next steps.
-5.  You MUST call the 'sendEmailTool' to send this confirmation email to the user with the composed subject and body.
+Follow these steps meticulously:
+1.  Acknowledge the booking request briefly. This will be the 'internalConfirmationMessage'. It should *not* include the simulated date or email details. Example: "Okay, I'm processing your appointment request."
+2.  Simulate a booking date for 'simulatedBookedDate'. If a preferred date is given, try to use it or a date close to it. Otherwise, pick a date a few days from now (e.g., 'three days from now', 'next Wednesday').
+3.  Compose a concise and informative subject line for the confirmation email (e.g., "Your HealthAssist Appointment Confirmation").
+4.  Compose the HTML body for the confirmation email. The email MUST include:
+    *   The simulated booked date.
+    *   A clear summary of the user's reported symptoms: "{{symptoms}}".
+    *   The complete conversation history (these are the trial details). If a conversation summary is provided ({{{conversationSummary}}}), include it fully. If not, state 'No prior conversation details provided.'.
+    *   Any relevant next steps or advice for the user.
+5.  Crucially, you MUST then use the 'sendEmailTool' to send this confirmation email. Provide the user's email ({{userEmail}}), the subject line you composed, and the HTML body you composed as input to the tool.
 `,
   prompt: `Process appointment for {{userEmail}} with symptoms: "{{symptoms}}".
+{{#if conversationSummary}}Trial details to include in email: "{{conversationSummary}}"{{/if}}
 {{#if preferredDate}}Attempt to book for preferred date: {{preferredDate}}.{{/if}}
-Generate booking acknowledgement, simulated date, and email content. Then, use the sendEmailTool.
+Generate booking acknowledgement, simulated date, and email content. Then, you absolutely MUST use the sendEmailTool to dispatch the email.
   `,
 });
 
@@ -98,38 +102,42 @@ const bookAppointmentFlow = ai.defineFlow(
 
     let emailSendAttemptResult: SendEmailOutput = { status: 'Failed', message: 'Email not attempted by LLM or tool call failed.' };
 
-    // Check if the tool was called and what its output was
-    const toolCalls = llmResponse.toolCalls;
     const emailToolCallRequest = llmResponse.requests?.find(req => req.toolRequest?.toolName === 'sendEmailTool');
 
-
     if (emailToolCallRequest) {
-        // Find the corresponding tool response
         const emailToolResponse = llmResponse.toolResponses?.find(tr => tr.ref === emailToolCallRequest.ref && tr.toolName === 'sendEmailTool');
 
-        if (emailToolResponse && emailToolResponse.parts) {
+        if (emailToolResponse && emailToolResponse.parts && emailToolResponse.parts[0]?.toolResponse) {
              try {
-                // Assuming the first part contains the JSON output from the tool
-                // The tool output schema is SendEmailOutputSchema
-                const parsedOutput = SendEmailOutputSchema.parse(JSON.parse(emailToolResponse.parts[0].toolResponse.response as string));
-                emailSendAttemptResult = parsedOutput;
+                const toolOutput = emailToolResponse.parts[0].toolResponse.response;
+                // Attempt to parse with schema directly. If it's already an object, it should pass.
+                // If it's a string, Zod parse will fail, then we try JSON.parse.
+                try {
+                    emailSendAttemptResult = SendEmailOutputSchema.parse(toolOutput);
+                } catch (directParseError) {
+                    // If direct parsing failed, and it's a string, try JSON.parse
+                    if (typeof toolOutput === 'string') {
+                        emailSendAttemptResult = SendEmailOutputSchema.parse(JSON.parse(toolOutput));
+                    } else {
+                        // If not a string and direct parse failed, then it's an unknown format or schema mismatch.
+                        console.error("Email tool output was not a string and direct schema parse failed:", directParseError);
+                        throw directParseError; // Re-throw if not a string or JSON.parse also fails
+                    }
+                }
             } catch(e) {
-                 console.error("Error parsing email tool response:", e);
+                 console.error("Error processing email tool response:", e);
                  emailSendAttemptResult = { status: 'Failed', message: 'Could not parse email tool response or response did not match schema.' };
             }
         } else {
-            emailSendAttemptResult = { status: 'Failed', message: 'LLM requested email tool, but no response found or response malformed.' };
+            emailSendAttemptResult = { status: 'Failed', message: 'LLM requested email tool, but no valid response part found or response malformed.' };
         }
     } else {
-        // LLM did not decide to call the tool
-        emailSendAttemptResult = { status: 'Failed', message: 'Email tool was not called by the LLM.' };
+        emailSendAttemptResult = { status: 'Failed', message: 'Email tool was not called by the LLM. The email was not sent.' };
     }
 
-
-    // Construct the final output
     const emailStatusText = emailSendAttemptResult.status === 'Sent' 
         ? 'has been sent' 
-        : `attempt was made (Status: ${emailSendAttemptResult.status})`;
+        : `attempt was made (Status: ${emailSendAttemptResult.status}, Message: ${emailSendAttemptResult.message})`;
 
     const finalConfirmationMessage = `${internalConfirmationMessage} Following that, your appointment is tentatively scheduled for ${simulatedBookedDate}. A confirmation email ${emailStatusText}.`;
 
@@ -137,9 +145,9 @@ const bookAppointmentFlow = ai.defineFlow(
       confirmationMessage: finalConfirmationMessage,
       appointmentDetails: {
         email: input.userEmail,
-        status: 'Simulated', // Or 'Booked' if simulation is successful
+        status: 'Simulated', 
         bookedDate: simulatedBookedDate,
-        notes: `Appointment for symptoms: ${input.symptoms}. Conversation: ${input.conversationSummary || 'N/A'}`,
+        notes: `Appointment for symptoms: ${input.symptoms}. Conversation (trial details): ${input.conversationSummary || 'N/A'}`,
       },
       emailSentStatus: `${emailSendAttemptResult.status} - ${emailSendAttemptResult.message}`,
     };
