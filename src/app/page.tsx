@@ -161,9 +161,9 @@ export default function HealthAssistPage() {
       const isOutcomeFinalSounding = aiResponse.outcome.toLowerCase().includes("seek immediate medical attention") || 
                                    aiResponse.outcome.toLowerCase().includes("final recommendation") ||
                                    aiResponse.outcome.toLowerCase().includes("my assessment is");
-      const hasQuestionEnded = !aiResponse.nextQuestion.trim().endsWith('?');
+      const hasQuestionEnded = !aiResponse.nextQuestion.trim().endsWith('?'); // If nextQuestion is not a question, assume triage can end.
 
-      if (isUrgent || isOutcomeFinalSounding || currentTurn + 1 >= MAX_CONVERSATION_TURNS || hasQuestionEnded) {
+      if (isUrgent || isOutcomeFinalSounding || currentTurn + 1 >= MAX_CONVERSATION_TURNS || (hasQuestionEnded && aiResponse.nextQuestion.trim() !== "")) {
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
         setActiveQuickReplies(undefined);
@@ -179,8 +179,8 @@ export default function HealthAssistPage() {
   };
   
   const showSymptomSelector = !initialSymptom && !isTriageComplete;
-  const showChatInput = initialSymptom && !isTriageComplete && !isLoading;
-  const showQuickReplies = activeQuickReplies && !isTriageComplete && !isLoading;
+  const showQuickReplies = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading;
+  const showChatInput = initialSymptom && !isTriageComplete && !isLoading && !showQuickReplies;
 
 
   return (
@@ -217,7 +217,7 @@ export default function HealthAssistPage() {
 
       {showQuickReplies && (
          <div className="p-4 bg-card border-t">
-          <p className="text-sm text-muted-foreground mb-2 text-center">Or select a quick response:</p>
+          <p className="text-sm text-muted-foreground mb-2 text-center">Select a response:</p>
           <div className="flex flex-wrap justify-center gap-2">
             {activeQuickReplies.map((reply) => (
               <Button
@@ -250,3 +250,4 @@ export default function HealthAssistPage() {
     </div>
   );
 }
+
