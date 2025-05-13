@@ -132,10 +132,13 @@ export default function HealthAssistPage() {
       setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       setConversationHistory([`User: ${symptomName}`, `AI: ${aiResponse.nextQuestion}`]);
       
-      if (aiResponse.urgency === 'Urgent') { // Only complete for 'Urgent' here, Appointment Needed has a flow.
+      if (aiResponse.urgency === 'Urgent') {
         addMessage({ sender: 'system', text: aiResponse.outcome, aiResponse });
         setIsTriageComplete(true);
         setActiveQuickReplies(undefined);
+      } else if (aiResponse.urgency === 'Appointment Needed' && (aiResponse.nextQuestion.toLowerCase().includes("schedule") || aiResponse.nextQuestion.toLowerCase().includes("book"))) {
+        // AI is already asking about booking, its quick replies will be used.
+        // No special handling here, triage continues.
       }
     } catch (error) {
       console.error("Symptom selection error:", error);
@@ -148,25 +151,39 @@ export default function HealthAssistPage() {
   };
 
   const handleUserResponse = async (responseText: string) => {
-    if (!initialSymptom || isTriageComplete || awaitingEmailForBooking && !isLoadingBooking) return;
+    if (!initialSymptom || (isTriageComplete && !awaitingEmailForBooking) || (awaitingEmailForBooking && !isLoadingBooking) ) return;
 
     addMessage({ sender: 'user', text: responseText });
+    const currentActiveQuickReplies = activeQuickReplies; // Capture before clearing
+    setActiveQuickReplies(undefined); 
 
-    const latestBotMessage = messages.filter(m => m.sender === 'bot' && m.aiResponse).pop();
-    const latestBotAiResponse = latestBotMessage?.aiResponse;
+    // Handle direct booking initiation from quick replies
+    if (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule")) {
+        const relevantContextMessage = messages.slice().reverse().find(
+            m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
+        );
+        if (relevantContextMessage || currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase())) {
+            setAwaitingEmailForBooking(true);
+            addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
+            setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address.`]);
+            return;
+        }
+    }
 
-    if (latestBotAiResponse?.urgency === 'Appointment Needed' && 
-        (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule"))) {
-      setAwaitingEmailForBooking(true);
-      setActiveQuickReplies(undefined); 
-      addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
-      setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address.`]);
-      setIsLoading(false); 
-      return; 
+    // Handle "I'll manage myself"
+    if (responseText.toLowerCase().includes("i'll manage myself")) {
+        const relevantContextMessage = messages.slice().reverse().find(
+            m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
+        );
+        if (relevantContextMessage || currentActiveQuickReplies?.map(qr => qr.toLowerCase()).includes(responseText.toLowerCase())) {
+            addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
+            setIsTriageComplete(true);
+            setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Okay. Please monitor your symptoms...`]);
+            return;
+        }
     }
     
     setIsLoading(true);
-    setActiveQuickReplies(undefined); 
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     const currentConversation = [...conversationHistory, `User: ${responseText}`].join('\n');
@@ -181,7 +198,6 @@ export default function HealthAssistPage() {
       setConversationHistory(newHistory);
       setCurrentTurn(prev => prev + 1);
 
-      // Determine if triage should be marked complete
       const currentAiResponse = aiResponse;
       const isOutcomeFinalSounding = currentAiResponse.outcome.toLowerCase().includes("seek immediate medical attention") ||
                                    currentAiResponse.outcome.toLowerCase().includes("final recommendation") ||
@@ -194,38 +210,36 @@ export default function HealthAssistPage() {
                                          currentAiResponse.nextQuestion.toLowerCase().includes("assistance") ||
                                          currentAiResponse.nextQuestion.toLowerCase().includes("manage this yourself"));
       
-      let shouldCompleteTriage = false;
+      let shouldCompleteAiQuestioningPhase = false;
 
       if (isCurrentlyAskingAboutBooking) {
-        // If AI is currently asking about booking, do not complete triage yet.
-        // Let the user respond to the booking question.
-        shouldCompleteTriage = false;
+        shouldCompleteAiQuestioningPhase = false; 
       } else if (currentAiResponse.urgency === 'Urgent') {
-        shouldCompleteTriage = true;
+        shouldCompleteAiQuestioningPhase = true;
       } else if (currentTurn + 1 >= MAX_CONVERSATION_TURNS) {
-        shouldCompleteTriage = true;
+        shouldCompleteAiQuestioningPhase = true;
       } else if (currentAiResponse.urgency === 'Appointment Needed') {
-        // Not asking about booking, but urgency is Appointment Needed.
-        // This means user likely declined help, or AI is giving a follow-up.
-        // Complete if conversation seems over (e.g. AI gives empty/non-question).
-        if (hasQuestionEnded || currentAiResponse.nextQuestion.trim() === "") {
-          shouldCompleteTriage = true;
-        }
-        // Also, if the outcome is very final (and not asking about booking), complete.
-        if (isOutcomeFinalSounding) { 
-            shouldCompleteTriage = true;
-        }
+        // AI said "Appointment Needed" but is NOT asking about booking.
+        // We will complete this AI questioning phase and inject our own quick replies.
+        shouldCompleteAiQuestioningPhase = true;
       } else { // Non-Urgent
         if (isOutcomeFinalSounding || (hasQuestionEnded && currentAiResponse.nextQuestion.trim() !== "")) {
-          shouldCompleteTriage = true;
+          shouldCompleteAiQuestioningPhase = true;
         }
       }
 
-      if (shouldCompleteTriage) {
+      if (shouldCompleteAiQuestioningPhase) {
         addMessage({ sender: 'system', text: currentAiResponse.outcome, aiResponse: currentAiResponse });
-        setIsTriageComplete(true);
-        setActiveQuickReplies(undefined);
+
+        if (currentAiResponse.urgency === 'Appointment Needed' && !isCurrentlyAskingAboutBooking) {
+          setActiveQuickReplies(["Schedule Appointment", "I'll manage myself"]);
+          setIsTriageComplete(false); // Keep chat active for these new replies
+        } else {
+          setIsTriageComplete(true);
+          setActiveQuickReplies(undefined); // Clear any AI-provided replies if truly complete
+        }
       }
+      // If not shouldCompleteAiQuestioningPhase, AI asked another question, and its quick replies are already set.
 
     } catch (error) {
       console.error("User response error:", error);
@@ -257,7 +271,9 @@ export default function HealthAssistPage() {
     try {
       const bookingResponse = await bookAppointmentAction(bookingInput);
       setMessages(prev => prev.filter(m => !m.isLoading)); 
-      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage }); 
+      addMessage({ sender: 'system', text: bookingResponse.confirmationMessage, aiResponse: { // Mock TriageOutput for system message styling
+        nextQuestion: '', quickReplies: [], urgency: 'Appointment Needed', outcome: bookingResponse.confirmationMessage
+      }}); 
       
       setAwaitingEmailForBooking(false);
       setEmailForBooking('');
