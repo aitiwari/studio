@@ -22,7 +22,7 @@ const BookAppointmentInputSchema = z.object({
 export type BookAppointmentInput = z.infer<typeof BookAppointmentInputSchema>;
 
 const BookAppointmentOutputSchema = z.object({
-  confirmationMessage: z.string().describe('A message confirming the appointment booking status.'),
+  confirmationMessage: z.string().describe('A message confirming the appointment booking. It should acknowledge the request, state that following the acknowledgement the appointment is tentatively scheduled, and detail the email confirmation status.'),
   appointmentDetails: z.object({
     email: z.string().email().describe('User email for the appointment.'),
     status: z.enum(['Booked', 'Pending', 'Failed', 'Simulated']).describe('Status of the appointment booking.'),
@@ -44,10 +44,10 @@ const bookingPrompt = ai.definePrompt({
   // The output of this specific prompt is just for internal processing before constructing the final flow output
   output: { 
     schema: z.object({
-      internalConfirmationMessage: z.string(),
-      simulatedBookedDate: z.string(),
-      emailSubject: z.string(),
-      emailBody: z.string(),
+      internalConfirmationMessage: z.string().describe("A brief acknowledgement of the booking request. This should NOT include the simulated date or email details, as those will be added by the flow."),
+      simulatedBookedDate: z.string().describe("The simulated date for the appointment, e.g., 'YYYY-MM-DD' or 'next Tuesday'."),
+      emailSubject: z.string().describe("Subject line for the confirmation email."),
+      emailBody: z.string().describe("HTML body for the confirmation email."),
     })
   },
   tools: [sendEmailTool],
@@ -57,16 +57,16 @@ Symptoms reported: "{{symptoms}}".
 {{#if conversationSummary}}Conversation context: "{{conversationSummary}}"{{/if}}
 {{#if preferredDate}}Preferred date: "{{preferredDate}}"{{/if}}
 
-1.  Acknowledge the booking request.
-2.  Simulate a booking date. If a preferred date is given, try to use it or a date close to it. Otherwise, pick a date a few days from now.
-3.  Generate a friendly internal confirmation message that will be part of the user-facing confirmation.
-4.  Compose a subject line for a confirmation email.
-5.  Compose the HTML body for the confirmation email. The email should include the booked date, a summary of symptoms, and any next steps.
-6.  You MUST call the 'sendEmailTool' to send this confirmation email to the user.
+Follow these steps:
+1.  Acknowledge the booking request briefly. This will be the 'internalConfirmationMessage'. It should *not* include the simulated date or email details, as those will be added separately by the system. For example: "Okay, I'm processing your appointment request."
+2.  Simulate a booking date for 'simulatedBookedDate'. If a preferred date is given, try to use it or a date close to it. Otherwise, pick a date a few days from now.
+3.  Compose a subject line for a confirmation email.
+4.  Compose the HTML body for the confirmation email. The email should include the booked date, a summary of symptoms, and any next steps.
+5.  You MUST call the 'sendEmailTool' to send this confirmation email to the user with the composed subject and body.
 `,
   prompt: `Process appointment for {{userEmail}} with symptoms: "{{symptoms}}".
 {{#if preferredDate}}Attempt to book for preferred date: {{preferredDate}}.{{/if}}
-Generate booking details and email content. Then, use the sendEmailTool.
+Generate booking acknowledgement, simulated date, and email content. Then, use the sendEmailTool.
   `,
 });
 
@@ -127,7 +127,11 @@ const bookAppointmentFlow = ai.defineFlow(
 
 
     // Construct the final output
-    const finalConfirmationMessage = `${internalConfirmationMessage} Your appointment is tentatively scheduled for ${simulatedBookedDate}. A confirmation email ${emailSendAttemptResult.status === 'Sent' ? 'has been sent' : 'attempt has been processed'}.`;
+    const emailStatusText = emailSendAttemptResult.status === 'Sent' 
+        ? 'has been sent' 
+        : `attempt was made (Status: ${emailSendAttemptResult.status})`;
+
+    const finalConfirmationMessage = `${internalConfirmationMessage} Following that, your appointment is tentatively scheduled for ${simulatedBookedDate}. A confirmation email ${emailStatusText}.`;
 
     return {
       confirmationMessage: finalConfirmationMessage,
@@ -141,3 +145,4 @@ const bookAppointmentFlow = ai.defineFlow(
     };
   }
 );
+
