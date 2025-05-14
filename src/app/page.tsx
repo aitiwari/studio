@@ -778,6 +778,15 @@ function HealthAssistChatContent() {
                     <p>
                       Our goal is to empower you with information and help you decide on appropriate next steps, whether it's self-care, seeking professional medical advice, or scheduling an appointment.
                     </p>
+                    <Separator className="my-3" />
+                    <h3 className="font-semibold text-foreground">A Note from the Developer:</h3>
+                    <p>
+                      My name is Sachin Tiwari, and I am a Microsoft Certified AI Engineer Associate. Symptom Scout AI is a project I developed to demonstrate the practical applications of artificial intelligence in the healthcare domain.
+                    </p>
+                    <p>
+                      This application is built using React and Next.js, leveraging modern web technologies to create an interactive and helpful user experience.
+                    </p>
+                    <Separator className="my-3" />
                     <p className="font-semibold text-destructive">
                       Important: Symptom Scout AI is not a substitute for professional medical diagnosis or treatment. Always consult with a qualified healthcare provider for any health concerns or before making any decisions related to your health. This tool is for informational purposes only.
                     </p>
