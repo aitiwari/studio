@@ -361,9 +361,8 @@ function HealthAssistChatContent() {
   return (
     <>
       <Sidebar side="left" collapsible="icon" className="border-r hidden md:flex md:flex-col bg-card">
-        <SidebarHeader className="p-4 border-b">
-          <h2 className="text-lg font-semibold group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">I want to get Help for :</h2>
-           <BotIcon className="h-7 w-7 text-primary hidden group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
+        <SidebarHeader className="p-4 border-b flex items-center justify-center">
+           <BotIcon className="h-7 w-7 text-primary group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
         </SidebarHeader>
         <SidebarContent className="p-0">
           {initialSymptom && (
