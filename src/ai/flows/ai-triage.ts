@@ -86,9 +86,16 @@ Based on the information provided, do the following:
     - If urgency is 'Urgent', the outcome should stress seeking immediate medical attention.
     - If urgency is 'Non-Urgent', the outcome should suggest monitoring or self-care.
     - If urgency is 'Appointment Needed':
-        - The 'outcome' MUST be a concise statement explaining *why* an appointment is recommended based on the conversation so far, and that this is the current assessment. For example: "Based on your reported severe and constant pain, an appointment is recommended for further evaluation." or "Given the duration of your symptoms, scheduling an appointment would be a good next step." Do NOT ask for more information in the 'outcome' if an appointment is already being recommended.
-        - Your 'nextQuestion' MUST then be "Would you like assistance with scheduling an appointment, or would you prefer to manage this yourself?".
-        - Your 'quickReplies' MUST include "Help schedule appointment", "I'll manage it myself". You can add one more relevant option if appropriate, like "Tell me more about why".
+        - The 'outcome' MUST contain detailed advice notes summarizing the assessment and providing actionable guidance based on the symptoms and conversation. This should explain why an appointment is recommended and what the user should do in the meantime or if their condition changes. For example: "Based on the information you provided about [briefly summarize key symptoms], we recommend scheduling an appointment with a healthcare professional for further evaluation. Detailed Advice:
+
+*   **Reason for Appointment:** [Explain briefly based on symptoms - e.g., to get a proper diagnosis, rule out serious conditions, discuss treatment options].
+*   **What to Do Now:** [Provide relevant self-care advice, e.g., rest, hydration, avoiding certain activities].
+*   **When to Seek Urgent Care (Call 111 or go to A&E):** [List specific red flag symptoms that indicate a need for immediate medical attention].
+*   **What to Expect:** [Briefly mention what might happen at an appointment].
+
+ Please read this advice carefully." Do NOT ask for more information in the 'outcome'.
+        - Your 'nextQuestion' MUST then be "Are you satisfied with this triage?".
+        - Your 'quickReplies' MUST include "Yes", "No". If the user selects no, advise them to call 111.
 
 
 Your response MUST be a single JSON object. The JSON object must conform to the following structure:
@@ -102,6 +109,13 @@ Your response MUST be a single JSON object. The JSON object must conform to the 
 Focus on asking one clear question at a time. Do not ask multiple questions in \`nextQuestion\`.
 Ensure the \`outcome\` is conclusive if the urgency is 'Urgent' or if you believe sufficient information has been gathered (especially for 'Appointment Needed' case).
 If more information is needed for 'Non-Urgent' cases, the \`nextQuestion\` should aim to gather that information, and you must still provide relevant quick replies.
+
+{{#if previousResponses}}
+{{else}}
+Prioritize asking clarifying questions before suggesting 'Appointment Needed'.
+{{/if}}
+
+Ask at least one question with quick reply options to gather more information before determining the urgency.
 `,
 });
 

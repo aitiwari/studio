@@ -201,6 +201,7 @@ function HealthAssistChatContent() {
   const [initialSymptom, setInitialSymptom] = useState<string | null>(null);
   const [conversationHistory, setConversationHistory] = useState<string[]>([]);
   const [isTriageComplete, setIsTriageComplete] = useState(false);
+  const [isAppointmentFlowComplete, setIsAppointmentFlowComplete] = useState(false);
   const [currentTurn, setCurrentTurn] = useState(0);
   const [activeQuickReplies, setActiveQuickReplies] = useState<string[] | undefined>(undefined);
 
@@ -448,14 +449,33 @@ function HealthAssistChatContent() {
 
         if (currentAiResponse.urgency === 'Appointment Needed' && !isCurrentlyAskingAboutBooking) {
           setShowAppointmentDecisionButtons(true);
-          setActiveQuickReplies(undefined); 
-          setIsTriageComplete(false); 
+          setActiveQuickReplies(undefined);
+          setIsTriageComplete(false);
         } else {
           setIsTriageComplete(true);
           setActiveQuickReplies(undefined);
         }
+      } else if (isCurrentlyAskingAboutBooking) {
+        if (responseText.toLowerCase() === "yes") {
+          setShowAppointmentDecisionButtons(true);
+          setActiveQuickReplies(undefined);
+          setIsTriageComplete(false);
+        } else if (responseText.toLowerCase() === "no") {
+          addMessage({
+            sender: "bot",
+            text: "I recommend you call 111 for further assistance.",
+          });
+          setIsTriageComplete(true);
+          setActiveQuickReplies(undefined);
+        } else {
+          setActiveQuickReplies(
+            aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined
+          );
+        }
       } else if (!isCurrentlyAskingAboutBooking) {
-         setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
+        setActiveQuickReplies(
+          aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined
+        );
       }
 
     } catch (error) {
@@ -517,7 +537,8 @@ function HealthAssistChatContent() {
       
       setAwaitingEmailForBooking(false);
       setEmailForBooking('');
-      setIsTriageComplete(true); 
+      setIsTriageComplete(true);
+      setIsAppointmentFlowComplete(true);
       setActiveQuickReplies(undefined);
       setShowAppointmentDecisionButtons(false);
       setConversationHistory(prev => [...prev, `AI: ${bookingResponse.confirmationMessage}`]);
@@ -679,7 +700,7 @@ function HealthAssistChatContent() {
             </div>
           )}
 
-          {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
+          {isAppointmentFlowComplete ? null : (showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
             <div className="p-4 bg-card border-t">
               <p className="text-sm text-muted-foreground mb-3 text-center">
                 An appointment is recommended. What would you like to do?
@@ -704,6 +725,7 @@ function HealthAssistChatContent() {
                     addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
                     setShowAppointmentDecisionButtons(false);
                     setIsTriageComplete(true);
+                    setIsAppointmentFlowComplete(true);
                     setConversationHistory(prev => [...prev, `User: I'll manage it`, `AI: Okay. Please monitor your symptoms...`]);
                   }}
                   className="shadow-md"
@@ -712,7 +734,7 @@ function HealthAssistChatContent() {
                 </Button>
               </div>
             </div>
-          )}
+          ))}
 
           {showQuickRepliesInChat && (
             <div className="p-4 bg-card border-t">
@@ -816,5 +838,3 @@ export default function HealthAssistPage() {
     </SidebarProvider>
   );
 }
-
-    
