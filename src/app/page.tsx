@@ -277,10 +277,51 @@ function HealthAssistChatContent() {
   
     const bookingConversationSummary = [...conversationHistory, `User (Email/Preferences): ${emailForBooking}`].join('\n');
 
+    // Basic parsing for preferredDate from the emailForBooking string
+    // This is a simplified example; more robust parsing might be needed.
+    let userEmail = emailForBooking;
+    let preferredDate;
+    const dateKeywords = [" on ", " for ", " around ", " next ", " tomorrow"];
+    for (const keyword of dateKeywords) {
+        if (emailForBooking.toLowerCase().includes(keyword)) {
+            const parts = emailForBooking.split(new RegExp(keyword, "i"));
+            if (parts.length > 1) {
+                userEmail = parts[0].trim(); // Assume email is before the keyword
+                preferredDate = parts.slice(1).join(keyword).trim(); // The rest is preference
+                if (preferredDate.toLowerCase().startsWith(keyword.trim())) {
+                   preferredDate = preferredDate.substring(keyword.trim().length).trim();
+                }
+                if (!userEmail.includes('@')) { // if email was not first
+                    userEmail = emailForBooking; // reset email
+                    preferredDate = parts.slice(0).join(keyword).trim(); // preference is everything
+                     // Attempt to remove email from preference string if it was mixed
+                    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+                    const emailMatch = preferredDate.match(emailRegex);
+                    if (emailMatch) {
+                        userEmail = emailMatch[0];
+                        preferredDate = preferredDate.replace(emailMatch[0], "").trim();
+                    }
+                }
+                break;
+            }
+        }
+    }
+    // Ensure email is just the email part if it was parsed along with preferences
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    const finalEmailMatch = userEmail.match(emailRegex);
+    if (finalEmailMatch) {
+        userEmail = finalEmailMatch[0];
+    } else {
+        // If no valid email found after trying to parse, assume the whole string was intended as email
+        // Or handle error - for now, let's assume it's the email.
+    }
+
+
     const bookingInput: BookAppointmentInput = {
-      userEmail: emailForBooking.split(' ')[0], 
+      userEmail: userEmail, 
       symptoms: initialSymptom,
       conversationSummary: bookingConversationSummary,
+      preferredDate: preferredDate,
     };
 
     try {
@@ -314,7 +355,7 @@ function HealthAssistChatContent() {
     <>
       <Sidebar side="left" collapsible="icon" className="border-r hidden md:flex md:flex-col bg-card">
         <SidebarHeader className="p-4 border-b">
-          <h2 className="text-lg font-semibold group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Symptom Helper</h2>
+          <h2 className="text-lg font-semibold group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">I want to get Help for :</h2>
            <BotIcon className="h-7 w-7 text-primary hidden group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
         </SidebarHeader>
         <SidebarContent className="p-0">
