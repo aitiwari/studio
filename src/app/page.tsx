@@ -485,10 +485,10 @@ function HealthAssistChatContent() {
     <>
       <Sidebar side="left" collapsible="icon" className="border-r hidden md:flex md:flex-col bg-card">
         <SidebarHeader className="p-4 border-b flex items-center justify-center">
-           {/* Removed PanelLeft icon as per user request */}
+           {/* Intentionally empty for cleaner look, or add a small static brand icon if sidebar is always visible for branding */}
         </SidebarHeader>
         <SidebarContent className="p-2">
-          <SidebarMenu>
+          <SidebarMenu className="mt-4">
             {healthCategories.map((category) => (
               <SidebarMenuItem key={category.name}>
                 <SidebarMenuButton
@@ -526,7 +526,7 @@ function HealthAssistChatContent() {
 
       <SidebarInset>
         <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
-          <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
+          <header className="bg-primary text-primary-foreground px-6 py-4 flex items-center space-x-3 shadow-md">
             <SidebarTrigger>
               <Menu className="h-6 w-6" />
             </SidebarTrigger>
