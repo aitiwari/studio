@@ -7,7 +7,6 @@ import {
   Brain, 
   Battery, 
   CircleAlert, 
-  BotIcon,
   Mic2, 
   Waves, 
   Orbit, 
@@ -33,6 +32,7 @@ import {
   FileSearch,   // For Sexual: Testing Info
   HelpCircle, // Placeholder for Dental: Lost Filling
   UserCircle, // Placeholder for Dental: Swollen Jaw
+  Menu // For Sidebar Trigger (Hamburger icon)
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse, bookAppointmentAction } from './actions';
@@ -117,7 +117,7 @@ const healthCategories: HealthCategory[] = [
     name: "Symptoms", 
     icon: ListChecks, 
     description: "General symptoms triage.",
-    prompt: "Welcome to Symptom Scout AI! Please select your primary symptom below to begin your triage:",
+    prompt: "Please select your primary symptom below to begin your triage:",
     options: commonSymptoms
   },
   { 
@@ -528,9 +528,12 @@ function HealthAssistChatContent() {
         <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
           <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
             <SidebarTrigger className="mr-1">
-              <BotIcon className="h-5 w-5" /> {/* Swapped icon */}
+              <Menu className="h-6 w-6" />
             </SidebarTrigger>
-            <h1 className="text-2xl font-semibold">Symptom Scout AI</h1>
+            <div className="flex items-center space-x-2">
+              <HeartPulse className="h-7 w-7" />
+              <h1 className="text-2xl font-semibold">Symptom Scout AI</h1>
+            </div>
           </header>
 
           <ScrollArea className="flex-grow p-4 space-y-4 bg-secondary/30">
