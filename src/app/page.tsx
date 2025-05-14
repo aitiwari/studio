@@ -7,7 +7,7 @@ import {
   Brain, 
   Battery, 
   CircleAlert, 
-  BotIcon,
+  BotIcon, // Keep BotIcon for sidebar
   Mic2, 
   Waves, 
   Orbit, 
@@ -16,7 +16,7 @@ import {
   HeartPulse, 
   PersonStanding, 
   CloudDrizzle,
-  PanelLeft // For SidebarTrigger if not default
+  PanelLeft 
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse, bookAppointmentAction } from './actions';
@@ -113,7 +113,7 @@ function HealthAssistChatContent() {
       {
         id: 'welcome-' + Date.now(),
         sender: 'bot',
-        text: "Welcome to HealthAssist! Please select a symptom below to begin your triage.",
+        text: "Welcome to Symptom Scout AI! Please select a symptom below to begin your triage.",
         timestamp: new Date(),
       }
     ]);
@@ -141,19 +141,7 @@ function HealthAssistChatContent() {
     setIsLoading(true);
     setActiveQuickReplies(undefined); 
     setShowAppointmentDecisionButtons(false);
-    // Remove welcome message if it's the first user action and symptom selection is inline
-    setMessages(prev => {
-      const welcomeMessageIndex = prev.findIndex(msg => msg.id.startsWith('welcome-'));
-      if (welcomeMessageIndex !== -1 && prev.length > 1 && prev[welcomeMessageIndex].text.includes("select a symptom below")) {
-        // Keep welcome message if it guides to inline symptom selection.
-        // If other messages exist or it was a different welcome message, then filter.
-        // For now, let's just make sure we don't remove it if it's the *only* message.
-        // The user has just clicked a symptom, so the welcome message has served its purpose
-        // if it was guiding to select a symptom *below*.
-        // Let's assume we always want to keep the welcome message.
-      }
-      return prev;
-    });
+    
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     try {
@@ -293,35 +281,33 @@ function HealthAssistChatContent() {
     const bookingConversationSummary = [...conversationHistory, `User (Email/Preferences): ${emailForBooking}`].join('\n');
     let userEmail = emailForBooking;
     let preferredDate;
-    const dateKeywords = [" on ", " for ", " around ", " next ", " tomorrow"];
-    for (const keyword of dateKeywords) {
-        if (emailForBooking.toLowerCase().includes(keyword)) {
-            const parts = emailForBooking.split(new RegExp(keyword, "i"));
-            if (parts.length > 1) {
-                userEmail = parts[0].trim(); 
-                preferredDate = parts.slice(1).join(keyword).trim(); 
-                if (preferredDate.toLowerCase().startsWith(keyword.trim())) {
-                   preferredDate = preferredDate.substring(keyword.trim().length).trim();
-                }
-                if (!userEmail.includes('@')) { 
-                    userEmail = emailForBooking; 
-                    preferredDate = parts.slice(0).join(keyword).trim();
-                    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-                    const emailMatch = preferredDate.match(emailRegex);
-                    if (emailMatch) {
-                        userEmail = emailMatch[0];
-                        preferredDate = preferredDate.replace(emailMatch[0], "").trim();
-                    }
-                }
-                break;
+    // Enhanced regex to better capture email and separate preferences
+    const emailAndDateRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*(?:for|on|around|next|,)?\s*(.*)/i;
+    const emailOnlyRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i;
+
+    const emailAndDateMatch = emailForBooking.match(emailAndDateRegex);
+
+    if (emailAndDateMatch && emailAndDateMatch[1]) {
+        userEmail = emailAndDateMatch[1];
+        if (emailAndDateMatch[2] && emailAndDateMatch[2].trim() !== "") {
+             preferredDate = emailAndDateMatch[2].trim();
+        }
+    } else {
+        const emailMatch = emailForBooking.match(emailOnlyRegex);
+        if (emailMatch && emailMatch[0]) {
+            userEmail = emailMatch[0];
+            // If only email is found, preferredDate remains undefined or user might add it in subsequent message
+            // This part of logic can be removed if the user is always prompted for date after email separately
+            const potentialDatePart = emailForBooking.replace(userEmail, "").trim();
+            if (potentialDatePart.length > 3) { // Arbitrary length to consider it a date preference
+                preferredDate = potentialDatePart;
             }
+        } else {
+            // If no email found, userEmail remains the full input; likely an invalid entry.
+            // Toast or error already handled by `!emailForBooking.trim()` or could be enhanced.
         }
     }
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-    const finalEmailMatch = userEmail.match(emailRegex);
-    if (finalEmailMatch) {
-        userEmail = finalEmailMatch[0];
-    }
+
 
     const bookingInput: BookAppointmentInput = {
       userEmail: userEmail, 
@@ -389,8 +375,8 @@ function HealthAssistChatContent() {
         <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
           <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
             <SidebarTrigger className="mr-1" />
-            <BotIcon className="h-8 w-8" />
-            <h1 className="text-2xl font-semibold">HealthAssist Chat</h1>
+            {/* BotIcon removed from here */}
+            <h1 className="text-2xl font-semibold">Symptom Scout AI</h1>
           </header>
 
           <ScrollArea className="flex-grow p-4 space-y-4 bg-secondary/30">
