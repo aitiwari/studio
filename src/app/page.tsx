@@ -33,7 +33,8 @@ import {
   HelpCircle, 
   UserCircle, 
   Menu, 
-  Search 
+  Search,
+  Info, // Added for "About Us"
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse, bookAppointmentAction } from './actions';
@@ -47,6 +48,15 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   SidebarProvider,
   Sidebar,
@@ -118,7 +128,7 @@ const healthCategories: HealthCategory[] = [
     name: "Symptoms", 
     icon: ListChecks, 
     description: "General symptoms triage.",
-    prompt: "Please select your primary symptom below to begin your triage:",
+    prompt: "Please select your primary symptom to begin your triage:",
     options: commonSymptoms
   },
   { 
@@ -742,6 +752,48 @@ function HealthAssistChatContent() {
                </Button>
              </div>
            )}
+           
+          <footer className="p-4 border-t bg-card text-center text-xs text-muted-foreground">
+            <div className="flex justify-center items-center space-x-4">
+              <p>&copy; {new Date().getFullYear()} Symptom Scout AI. All rights reserved.</p>
+              <Separator orientation="vertical" className="h-4" />
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="link" className="text-xs p-0 h-auto text-muted-foreground hover:text-primary">
+                    <Info className="h-3 w-3 mr-1" />
+                    About Us
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center">
+                      <HeartPulse className="h-6 w-6 mr-2 text-primary" />
+                      About Symptom Scout AI
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="py-4 space-y-3 text-sm">
+                    <p>
+                      Symptom Scout AI is an intelligent assistant designed to help you understand potential health concerns by triaging symptoms and providing guidance. 
+                    </p>
+                    <p>
+                      Our goal is to empower you with information and help you decide on appropriate next steps, whether it's self-care, seeking professional medical advice, or scheduling an appointment.
+                    </p>
+                    <p className="font-semibold text-destructive">
+                      Important: Symptom Scout AI is not a substitute for professional medical diagnosis or treatment. Always consult with a qualified healthcare provider for any health concerns or before making any decisions related to your health. This tool is for informational purposes only.
+                    </p>
+                  </div>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline" className="mt-2 w-full">
+                      Close
+                    </Button>
+                  </DialogClose>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <p className="mt-2">
+              Disclaimer: This application is for informational purposes only and does not constitute medical advice. Always consult a healthcare professional for medical concerns.
+            </p>
+          </footer>
         </div>
       </SidebarInset>
     </>
@@ -755,3 +807,5 @@ export default function HealthAssistPage() {
     </SidebarProvider>
   );
 }
+
+    
