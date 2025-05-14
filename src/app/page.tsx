@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -166,14 +167,14 @@ export default function HealthAssistPage() {
 
         if (relevantContextMessage || wasQuickReply) {
             setAwaitingEmailForBooking(true);
-            addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
-            setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address.`]);
+            addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address. If you have a preferred date or time (e.g., 'next Tuesday morning' or 'tomorrow around 2 PM'), please include it with your email or as a separate message right after." });
+            setConversationHistory(prev => [...prev, `User: ${responseText}`, `AI: Please provide your email address and any date/time preferences.`]);
             return; 
         }
     }
 
     // Handle "I'll manage myself" from AI's quick replies
-    if (!showAppointmentDecisionButtons && responseText.toLowerCase().includes("i'll manage it")) { // Changed from "i'll manage myself" to match common quick reply
+    if (!showAppointmentDecisionButtons && responseText.toLowerCase().includes("i'll manage it")) { 
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
         );
@@ -223,6 +224,7 @@ export default function HealthAssistPage() {
       } else if (currentTurn + 1 >= MAX_CONVERSATION_TURNS) {
         shouldCompleteAiQuestioningPhase = true;
       } else if (currentAiResponse.urgency === 'Appointment Needed') {
+        // If not asking about booking directly, but appointment is needed, then show outcome and decision buttons.
         shouldCompleteAiQuestioningPhase = true;
       } else { // Non-Urgent
         if (isOutcomeFinalSounding || (hasQuestionEnded && currentAiResponse.nextQuestion.trim() !== "")) {
@@ -265,21 +267,18 @@ export default function HealthAssistPage() {
     addMessage({ sender: 'user', text: `My email for booking: ${emailForBooking}` });
     addMessage({ sender: 'bot', text: 'Attempting to book your appointment...', isLoading: true });
   
-    const bookingConversationSummary = conversationHistory.join('\n') + `\nUser: My email is ${emailForBooking}`;
+    // Append the email (and any preferences typed with it) to the conversation history for the booking flow
+    const bookingConversationSummary = [...conversationHistory, `User (Email/Preferences): ${emailForBooking}`].join('\n');
 
-    // TODO: Potentially extract preferredDate from conversationHistory if user mentioned it.
-    // For now, preferredDate is not explicitly passed from the UI to bookAppointmentAction.
     const bookingInput: BookAppointmentInput = {
-      userEmail: emailForBooking,
+      userEmail: emailForBooking.split(' ')[0], // Attempt to extract just email if user typed more
       symptoms: initialSymptom,
       conversationSummary: bookingConversationSummary,
-      // preferredDate: extractedPreferredDate, // This would be an enhancement
     };
 
     try {
       const bookingResponse = await bookAppointmentAction(bookingInput);
       setMessages(prev => prev.filter(m => !m.isLoading)); 
-      // Display booking confirmation as a simple system message without aiResponse to avoid incorrect title
       addMessage({ sender: 'system', text: bookingResponse.confirmationMessage }); 
       
       setAwaitingEmailForBooking(false);
@@ -324,18 +323,18 @@ export default function HealthAssistPage() {
       {awaitingEmailForBooking && !isTriageComplete && (
         <div className="p-4 border-t bg-card space-y-3">
           <Label htmlFor="emailForBookingInput" className="text-sm font-medium text-foreground">
-            Enter your email address for appointment scheduling:
+            Enter your email address. You can also mention preferred dates/times (e.g., "myemail@example.com for next Tuesday morning"):
           </Label>
           <div className="flex items-center space-x-2">
             <Input
               id="emailForBookingInput"
-              type="email"
+              type="text" // Changed to text to allow preferences
               value={emailForBooking}
               onChange={(e) => setEmailForBooking(e.target.value)}
-              placeholder="your.email@example.com"
+              placeholder="your.email@example.com, preferred time..."
               disabled={isLoadingBooking}
               className="flex-grow rounded-full shadow-sm"
-              aria-label="Email for booking"
+              aria-label="Email and preferences for booking"
             />
             <Button 
               onClick={handleEmailSubmitForBooking} 
@@ -375,8 +374,8 @@ export default function HealthAssistPage() {
                 setShowAppointmentDecisionButtons(false);
                 setAwaitingEmailForBooking(true);
                 addMessage({ sender: 'user', text: "I'd like to book an appointment." });
-                addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address below." });
-                setConversationHistory(prev => [...prev, `User: Wants to book appointment`, `AI: Please provide your email address.`]);
+                addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address. If you have a preferred date or time (e.g., 'next Tuesday morning' or 'tomorrow around 2 PM'), please include it with your email or as a separate message right after." });
+                setConversationHistory(prev => [...prev, `User: Wants to book appointment`, `AI: Please provide your email address and any date/time preferences.`]);
               }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
             >
@@ -434,3 +433,4 @@ export default function HealthAssistPage() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Defines a Genkit flow for booking a medical appointment.
@@ -50,38 +51,26 @@ const bookingPrompt = ai.definePrompt({
     })
   },
   tools: [sendEmailTool],
-  system: `You are an appointment booking assistant. Your task is to process an appointment request, generate a confirmation message, and prepare details for a confirmation email.
-The user's email is {{userEmail}}.
-Symptoms reported: "{{symptoms}}".
+  system: `You are an expert AI appointment booking assistant.
+User's email: {{userEmail}}
+Symptoms: "{{symptoms}}"
+{{#if preferredDate}}User's explicit preferred date: "{{preferredDate}}". Prioritize this for the date.{{/if}}
+{{#if conversationSummary}}Full conversation (trial details): "{{conversationSummary}}". Review for date/time preferences if 'preferredDate' is not set.{{/if}}
 
-{{#if preferredDate}}
-User's explicit preferred date: "{{preferredDate}}". Use this as the primary guide for the date part of the appointment.
-{{/if}}
+Your task is to:
+1.  Create an 'internalConfirmationMessage' (e.g., "Processing your request.").
+2.  Determine a 'simulatedDateTime' for the appointment (e.g., 'YYYY-MM-DD at HH:MM AM/PM' or 'next Tuesday at 3:00 PM'). Use 'preferredDate' if available, then check 'conversationSummary' for any mentioned preferences, otherwise pick a slot a few days out (e.g., 'next Wednesday at 10:00 AM').
+3.  Craft an 'emailSubject' (e.g., "Your HealthAssist Appointment Confirmation").
+4.  Compose an 'emailBody' (HTML). This body MUST include:
+    - The full 'simulatedDateTime' you determined.
+    - A clear summary of the user's reported symptoms: "{{symptoms}}".
+    - The complete conversation history (these are the trial details). If a 'conversationSummary' is provided ({{{conversationSummary}}}), include it fully. If not, state 'No prior conversation details provided.'.
+    - Any relevant next steps or advice for the user.
+5.  After defining these four values, you MUST respond with a JSON object containing these four fields: 'internalConfirmationMessage', 'simulatedDateTime', 'emailSubject', 'emailBody'.
 
-{{#if conversationSummary}}
-Full conversation history (trial details): "{{conversationSummary}}"
-Review this history for any user-stated date or time preferences, especially if no explicit 'preferredDate' input was provided.
-{{/if}}
-
-Follow these steps meticulously:
-1.  Acknowledge the booking request briefly. This will be the 'internalConfirmationMessage'. It should *not* include the simulated date/time or email details. Example: "Okay, I'm processing your appointment request."
-2.  Simulate a booking date and time for 'simulatedDateTime'.
-    *   If an explicit 'preferredDate' is provided ({{{preferredDate}}}), prioritize it for the date.
-    *   If not, or for the time component, check the 'conversationSummary' ({{{conversationSummary}}}) for any user preferences for date/time.
-    *   If no preferences are found or usable, pick a date a few days from now (e.g., 'next Wednesday') and a common time (e.g., '10:00 AM' or '2:30 PM').
-    *   The 'simulatedDateTime' MUST be specific and include both date and time, like 'YYYY-MM-DD at HH:MM AM/PM' or 'next Friday at 3:00 PM'.
-3.  Compose a concise and informative subject line for the confirmation email (e.g., "Your HealthAssist Appointment Confirmation").
-4.  Compose the HTML body for the confirmation email. The email MUST include:
-    *   The full simulated booked date and time (from 'simulatedDateTime').
-    *   A clear summary of the user's reported symptoms: "{{symptoms}}".
-    *   The complete conversation history (these are the trial details). If a conversation summary is provided ({{{conversationSummary}}}), include it fully. If not, state 'No prior conversation details provided.'.
-    *   Any relevant next steps or advice for the user.
-5.  Crucially, you MUST then use the 'sendEmailTool' to send this confirmation email. Provide the user's email ({{userEmail}}), the subject line you composed, and the HTML body you composed as input to the tool.
+THEN, AS THE IMMEDIATE NEXT AND ABSOLUTELY FINAL STEP in your process, YOU MUST use the 'sendEmailTool'. Provide the '{{userEmail}}', the 'emailSubject' you just composed, and the 'emailBody' you just composed as input to this tool. This tool call is mandatory to complete the booking process and send the confirmation. DO NOT FORGET THIS STEP.
 `,
-  prompt: `Process appointment for {{userEmail}} with symptoms: "{{symptoms}}".
-{{#if preferredDate}}Explicit preferred date: {{preferredDate}}. {{/if}}
-{{#if conversationSummary}}Trial details to include in email: "{{conversationSummary}}". Check for date/time preferences here too.{{/if}}
-Generate booking acknowledgement, a specific simulated date and time for the appointment, and email content. Then, you absolutely MUST use the sendEmailTool to dispatch the email.
+  prompt: `Process the appointment request based on the system instructions. Generate the acknowledgement, simulated date/time, and email content. Critically, ensure you then call the sendEmailTool with the generated email details. This is the final and most important action.
   `,
 });
 
@@ -99,19 +88,19 @@ const bookAppointmentFlow = ai.defineFlow(
 
     if (!promptOutput) {
       return {
-        confirmationMessage: 'There was an issue processing your booking request. No details generated.',
+        confirmationMessage: 'There was an issue processing your booking request. No details generated from AI.',
         appointmentDetails: {
           email: input.userEmail,
           status: 'Failed',
           notes: 'LLM did not return expected output for booking details.',
         },
-         emailSentStatus: "Not attempted due to internal error."
+         emailSentStatus: "Not attempted due to internal AI error."
       };
     }
     
     const { internalConfirmationMessage, simulatedDateTime, emailSubject, emailBody } = promptOutput;
 
-    let emailSendAttemptResult: SendEmailOutput = { status: 'Failed', message: 'Email not attempted by LLM or tool call failed.' };
+    let emailSendAttemptResult: SendEmailOutput = { status: 'Failed', message: 'Email tool was not invoked by the LLM or an unexpected error occurred before tool call.' };
 
     const emailToolCallRequest = llmResponse.requests?.find(req => req.toolRequest?.toolName === 'sendEmailTool');
 
@@ -121,29 +110,29 @@ const bookAppointmentFlow = ai.defineFlow(
         if (emailToolResponse && emailToolResponse.parts && emailToolResponse.parts[0]?.toolResponse) {
              try {
                 const toolOutput = emailToolResponse.parts[0].toolResponse.response;
-                try {
-                    emailSendAttemptResult = SendEmailOutputSchema.parse(toolOutput);
-                } catch (directParseError) {
-                    if (typeof toolOutput === 'string') {
-                        emailSendAttemptResult = SendEmailOutputSchema.parse(JSON.parse(toolOutput));
-                    } else {
-                        console.error("Email tool output was not a string and direct schema parse failed:", directParseError);
-                        throw directParseError; 
-                    }
-                }
-            } catch(e) {
-                 console.error("Error processing email tool response:", e);
-                 emailSendAttemptResult = { status: 'Failed', message: 'Could not parse email tool response or response did not match schema.' };
+                // The tool should directly return an object matching SendEmailOutputSchema
+                emailSendAttemptResult = SendEmailOutputSchema.parse(toolOutput);
+            } catch(e: any) {
+                 console.error("Error processing/parsing email tool response:", e);
+                 // Try to get a meaningful error message
+                 let errorMessage = 'Could not parse email tool response or response did not match schema.';
+                 if (e instanceof z.ZodError) {
+                    errorMessage = `Email tool response Zod parsing error: ${e.errors.map(err => `${err.path.join('.')} - ${err.message}`).join(', ')}`;
+                 } else if (e.message) {
+                    errorMessage = e.message;
+                 }
+                 emailSendAttemptResult = { status: 'Failed', message: errorMessage };
             }
         } else {
             emailSendAttemptResult = { status: 'Failed', message: 'LLM requested email tool, but no valid response part found or response malformed.' };
         }
     } else {
-        emailSendAttemptResult = { status: 'Failed', message: 'Email tool was not called by the LLM. The email was not sent.' };
+        // This is the case where the LLM did not even attempt to call the tool
+        emailSendAttemptResult = { status: 'Failed', message: 'Critical: Email tool was not called by the LLM. The email was not sent.' };
     }
 
     const emailStatusText = emailSendAttemptResult.status === 'Sent' 
-        ? 'has been sent' 
+        ? `has been sent to ${input.userEmail}`
         : `attempt was made (Status: ${emailSendAttemptResult.status}, Message: ${emailSendAttemptResult.message})`;
 
     const finalConfirmationMessage = `${internalConfirmationMessage} Following that, your appointment is tentatively scheduled for ${simulatedDateTime}. A confirmation email ${emailStatusText}.`;
@@ -160,3 +149,4 @@ const bookAppointmentFlow = ai.defineFlow(
     };
   }
 );
+
