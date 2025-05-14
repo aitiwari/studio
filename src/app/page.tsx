@@ -485,7 +485,7 @@ function HealthAssistChatContent() {
     <>
       <Sidebar side="left" collapsible="icon" className="border-r hidden md:flex md:flex-col bg-card">
         <SidebarHeader className="p-4 border-b flex items-center justify-center">
-           <BotIcon className="h-7 w-7 text-primary group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
+           <PanelLeft className="h-7 w-7 text-primary group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
@@ -527,7 +527,9 @@ function HealthAssistChatContent() {
       <SidebarInset>
         <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
           <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
-            <SidebarTrigger className="mr-1" />
+            <SidebarTrigger className="mr-1">
+              <BotIcon className="h-5 w-5" /> {/* Swapped icon */}
+            </SidebarTrigger>
             <h1 className="text-2xl font-semibold">Symptom Scout AI</h1>
           </header>
 
@@ -671,3 +673,4 @@ export default function HealthAssistPage() {
     </SidebarProvider>
   );
 }
+
