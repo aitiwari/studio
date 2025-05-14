@@ -527,7 +527,7 @@ function HealthAssistChatContent() {
       <SidebarInset>
         <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
           <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
-            <SidebarTrigger className="mr-1">
+            <SidebarTrigger>
               <Menu className="h-6 w-6" />
             </SidebarTrigger>
             <div className="flex items-center space-x-2">
