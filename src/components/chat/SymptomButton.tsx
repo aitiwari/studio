@@ -27,7 +27,7 @@ export function SymptomButton({ symptom, onSelect, disabled, className }: Sympto
       aria-label={`Select symptom: ${symptom.name}`}
     >
       <IconComponent className={cn("h-8 w-8 mb-1 text-primary", "group-[[data-sidebar=sidebar][data-collapsible=icon]]:h-6 group-[[data-sidebar=sidebar][data-collapsible=icon]]:w-6 group-[[data-sidebar=sidebar][data-collapsible=icon]]:mb-0")} />
-      <span className="text-xs text-center group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">{symptom.name}</span>
+      <span className="text-xs text-center break-words group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">{symptom.name}</span>
     </Button>
   );
 }
