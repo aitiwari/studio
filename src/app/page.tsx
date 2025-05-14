@@ -93,6 +93,8 @@ function HealthAssistChatContent() {
   const [emailForBooking, setEmailForBooking] = useState('');
   const [isLoadingBooking, setIsLoadingBooking] = useState(false);
   const [showAppointmentDecisionButtons, setShowAppointmentDecisionButtons] = useState(false);
+  const [showSymptomSelectionInChatArea, setShowSymptomSelectionInChatArea] = useState(true);
+
 
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
@@ -111,7 +113,7 @@ function HealthAssistChatContent() {
       {
         id: 'welcome-' + Date.now(),
         sender: 'bot',
-        text: "Welcome to HealthAssist! Please select a symptom from the left panel to begin your triage.",
+        text: "Welcome to HealthAssist! Please select a symptom below to begin your triage.",
         timestamp: new Date(),
       }
     ]);
@@ -125,6 +127,7 @@ function HealthAssistChatContent() {
     setEmailForBooking('');
     setIsLoadingBooking(false);
     setShowAppointmentDecisionButtons(false);
+    setShowSymptomSelectionInChatArea(true);
   };
   
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
@@ -134,11 +137,23 @@ function HealthAssistChatContent() {
   const handleSymptomSelect = async (symptomName: string) => {
     addMessage({ sender: 'user', text: symptomName });
     setInitialSymptom(symptomName);
+    setShowSymptomSelectionInChatArea(false); 
     setIsLoading(true);
     setActiveQuickReplies(undefined); 
     setShowAppointmentDecisionButtons(false);
-    // Remove welcome message if it's the first user action
-    setMessages(prev => prev.filter(msg => !(msg.id.startsWith('welcome') && prev.length > 1)));
+    // Remove welcome message if it's the first user action and symptom selection is inline
+    setMessages(prev => {
+      const welcomeMessageIndex = prev.findIndex(msg => msg.id.startsWith('welcome-'));
+      if (welcomeMessageIndex !== -1 && prev.length > 1 && prev[welcomeMessageIndex].text.includes("select a symptom below")) {
+        // Keep welcome message if it guides to inline symptom selection.
+        // If other messages exist or it was a different welcome message, then filter.
+        // For now, let's just make sure we don't remove it if it's the *only* message.
+        // The user has just clicked a symptom, so the welcome message has served its purpose
+        // if it was guiding to select a symptom *below*.
+        // Let's assume we always want to keep the welcome message.
+      }
+      return prev;
+    });
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     try {
@@ -164,7 +179,7 @@ function HealthAssistChatContent() {
   };
 
   const handleUserResponse = async (responseText: string) => {
-    if (!initialSymptom || isTriageComplete || isLoading || awaitingEmailForBooking || showAppointmentDecisionButtons) return;
+    if (!initialSymptom || isTriageComplete || isLoading || awaitingEmailForBooking || showAppointmentDecisionButtons || showSymptomSelectionInChatArea) return;
 
     addMessage({ sender: 'user', text: responseText });
     const currentActiveQuickReplies = activeQuickReplies; 
@@ -276,9 +291,6 @@ function HealthAssistChatContent() {
     addMessage({ sender: 'bot', text: 'Attempting to book your appointment...', isLoading: true });
   
     const bookingConversationSummary = [...conversationHistory, `User (Email/Preferences): ${emailForBooking}`].join('\n');
-
-    // Basic parsing for preferredDate from the emailForBooking string
-    // This is a simplified example; more robust parsing might be needed.
     let userEmail = emailForBooking;
     let preferredDate;
     const dateKeywords = [" on ", " for ", " around ", " next ", " tomorrow"];
@@ -286,15 +298,14 @@ function HealthAssistChatContent() {
         if (emailForBooking.toLowerCase().includes(keyword)) {
             const parts = emailForBooking.split(new RegExp(keyword, "i"));
             if (parts.length > 1) {
-                userEmail = parts[0].trim(); // Assume email is before the keyword
-                preferredDate = parts.slice(1).join(keyword).trim(); // The rest is preference
+                userEmail = parts[0].trim(); 
+                preferredDate = parts.slice(1).join(keyword).trim(); 
                 if (preferredDate.toLowerCase().startsWith(keyword.trim())) {
                    preferredDate = preferredDate.substring(keyword.trim().length).trim();
                 }
-                if (!userEmail.includes('@')) { // if email was not first
-                    userEmail = emailForBooking; // reset email
-                    preferredDate = parts.slice(0).join(keyword).trim(); // preference is everything
-                     // Attempt to remove email from preference string if it was mixed
+                if (!userEmail.includes('@')) { 
+                    userEmail = emailForBooking; 
+                    preferredDate = parts.slice(0).join(keyword).trim();
                     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
                     const emailMatch = preferredDate.match(emailRegex);
                     if (emailMatch) {
@@ -306,16 +317,11 @@ function HealthAssistChatContent() {
             }
         }
     }
-    // Ensure email is just the email part if it was parsed along with preferences
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
     const finalEmailMatch = userEmail.match(emailRegex);
     if (finalEmailMatch) {
         userEmail = finalEmailMatch[0];
-    } else {
-        // If no valid email found after trying to parse, assume the whole string was intended as email
-        // Or handle error - for now, let's assume it's the email.
     }
-
 
     const bookingInput: BookAppointmentInput = {
       userEmail: userEmail, 
@@ -346,10 +352,11 @@ function HealthAssistChatContent() {
     }
   };
   
-  const showSymptomSelectorInSidebar = !initialSymptom && !isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
-  const showQuickRepliesInChat = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
-  const showChatInputInChat = initialSymptom && !isTriageComplete && !isLoading && !showQuickRepliesInChat && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
   const selectedSymptomData = initialSymptom ? commonSymptoms.find(s => s.name === initialSymptom) : null;
+
+  const showQuickRepliesInChat = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea;
+  const showChatInputInChat = initialSymptom && !isTriageComplete && !isLoading && !showQuickRepliesInChat && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea;
+
 
   return (
     <>
@@ -359,22 +366,7 @@ function HealthAssistChatContent() {
            <BotIcon className="h-7 w-7 text-primary hidden group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
         </SidebarHeader>
         <SidebarContent className="p-0">
-          {showSymptomSelectorInSidebar && (
-            <div className="p-4">
-              <p className="text-sm text-muted-foreground mb-3 group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Select your primary symptom:</p>
-              <div className={`flex flex-wrap gap-2 ${sidebarState === 'collapsed' && !isMobile ? 'justify-center' : 'justify-start'}`}>
-                {commonSymptoms.map((symptom) => (
-                  <SymptomButton 
-                    key={symptom.name} 
-                    symptom={symptom} 
-                    onSelect={handleSymptomSelect}
-                    disabled={isLoading}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          {!showSymptomSelectorInSidebar && initialSymptom && (
+          {initialSymptom && (
              <div className="p-4 space-y-3">
                <p className="text-sm font-medium text-foreground group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Current Triage:</p>
                <div className={`flex items-center gap-2 p-2 border rounded-md ${sidebarState === 'collapsed' && !isMobile ? 'justify-center' : ''}`}>
@@ -395,9 +387,9 @@ function HealthAssistChatContent() {
       </Sidebar>
 
       <SidebarInset>
-        <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden"> {/* Removed max-w-4xl, mx-auto, rounded-lg. h-screen fills parent (SidebarInset) */}
+        <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
           <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
-            <SidebarTrigger className="mr-1" /> {/* Sidebar trigger */}
+            <SidebarTrigger className="mr-1" />
             <BotIcon className="h-8 w-8" />
             <h1 className="text-2xl font-semibold">HealthAssist Chat</h1>
           </header>
@@ -410,6 +402,24 @@ function HealthAssistChatContent() {
           </ScrollArea>
 
           <Separator />
+
+          {showSymptomSelectionInChatArea && (
+            <div className="p-4 border-t bg-card">
+              <p className="text-sm text-muted-foreground mb-3 text-center">
+                Select your primary symptom:
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {commonSymptoms.map((symptom) => (
+                  <SymptomButton
+                    key={symptom.name}
+                    symptom={symptom}
+                    onSelect={handleSymptomSelect}
+                    disabled={isLoading}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {awaitingEmailForBooking && !isTriageComplete && (
             <div className="p-4 border-t bg-card space-y-3">
@@ -437,8 +447,6 @@ function HealthAssistChatContent() {
               </div>
             </div>
           )}
-
-          {/* Symptom selector is now in the sidebar */}
 
           {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
             <div className="p-4 bg-card border-t">
@@ -499,9 +507,9 @@ function HealthAssistChatContent() {
             <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
           )}
           
-          {isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons && (
+          {isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea && (
             <div className="p-4 bg-background border-t text-center">
-              <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start over from the sidebar if needed.</p>
+              <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start over by using the sidebar or clicking below.</p>
               <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
                 Start New Triage
               </Button>
