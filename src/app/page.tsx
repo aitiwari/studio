@@ -7,7 +7,7 @@ import {
   Brain, 
   Battery, 
   CircleAlert, 
-  BotIcon, // Keep BotIcon for sidebar
+  BotIcon,
   Mic2, 
   Waves, 
   Orbit, 
@@ -16,7 +16,12 @@ import {
   HeartPulse, 
   PersonStanding, 
   CloudDrizzle,
-  PanelLeft 
+  PanelLeft,
+  ListChecks, // For Symptoms category
+  ShieldAlert, // For Injury category
+  Heart, // For Sexual Health category (re-using, can be distinct later)
+  // User, // Alternative for Sexual Health
+  // Smile, // Alternative for Mental Health
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse, bookAppointmentAction } from './actions';
@@ -38,9 +43,12 @@ import {
   SidebarInset,
   SidebarTrigger,
   useSidebar,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
 } from '@/components/ui/sidebar';
 
-// Inline SVG for Lungs icon as it's not in lucide-react
+// Inline SVG for Lungs icon
 const LungsIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -61,6 +69,13 @@ const LungsIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+// Custom SVG for Dental Icon
+const ToothIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <path d="M9.365 3.412A2 2 0 0 1 10.999 3h2a2 2 0 0 1 1.634.412l4.366 4.588A2 2 0 0 1 19 9.588v.824a2 2 0 0 1-.586 1.414L16 14.24l-1.414 4.356A2 2 0 0 1 12.586 20h-1.172a2 2 0 0 1-1.919-1.414L8 14.24l-2.414-2.414A2 2 0 0 1 5 10.412v-.824a2 2 0 0 1 .634-1.588z"/>
+    <path d="M15 14h-2c-1 0-2-1-2-2V9c0-1 1-2 2-2h2c1 0 2 1 2 2v3c0 1-1 2-2 2z" />
+  </svg>
+);
 
 const commonSymptoms: SymptomOption[] = [
   { name: "Fever", icon: Thermometer },
@@ -78,6 +93,20 @@ const commonSymptoms: SymptomOption[] = [
   { name: "Runny Nose / Congestion", icon: CloudDrizzle },
 ];
 
+interface HealthCategory {
+  name: string;
+  icon: React.ElementType;
+  description?: string; // Optional: for a more detailed welcome message
+}
+
+const healthCategories: HealthCategory[] = [
+  { name: "Symptoms", icon: ListChecks, description: "General symptoms triage." },
+  { name: "Injury", icon: ShieldAlert, description: "Support for physical injuries." },
+  { name: "Dental", icon: ToothIcon, description: "Dental health concerns." },
+  { name: "Mental", icon: Brain, description: "Mental wellbeing support." },
+  { name: "Sexual", icon: Heart, description: "Sexual health questions." },
+];
+
 const MAX_CONVERSATION_TURNS = 5; 
 
 function HealthAssistChatContent() {
@@ -93,6 +122,8 @@ function HealthAssistChatContent() {
   const [emailForBooking, setEmailForBooking] = useState('');
   const [isLoadingBooking, setIsLoadingBooking] = useState(false);
   const [showAppointmentDecisionButtons, setShowAppointmentDecisionButtons] = useState(false);
+  
+  const [activeCategory, setActiveCategory] = useState<string>(healthCategories[0].name);
   const [showSymptomSelectionInChatArea, setShowSymptomSelectionInChatArea] = useState(true);
 
 
@@ -101,19 +132,21 @@ function HealthAssistChatContent() {
   const { state: sidebarState, isMobile } = useSidebar();
 
   useEffect(() => {
-    resetChat();
+    resetChatForCategory(healthCategories[0].name); // Initialize with the default category
   }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const resetChat = () => {
+  const resetChatForCategory = (categoryName: string) => {
     setMessages([
       {
         id: 'welcome-' + Date.now(),
         sender: 'bot',
-        text: "Welcome to Symptom Scout AI! Please select a symptom below to begin your triage.",
+        text: categoryName === "Symptoms" 
+              ? "Welcome to Symptom Scout AI! Please select a symptom below to begin your triage."
+              : `You've selected ${categoryName}. How can we help you with ${categoryName.toLowerCase()} concerns today? (This section is under development)`,
         timestamp: new Date(),
       }
     ]);
@@ -127,14 +160,25 @@ function HealthAssistChatContent() {
     setEmailForBooking('');
     setIsLoadingBooking(false);
     setShowAppointmentDecisionButtons(false);
-    setShowSymptomSelectionInChatArea(true);
+    setShowSymptomSelectionInChatArea(categoryName === "Symptoms");
+    setActiveCategory(categoryName);
   };
+
+  const resetChat = () => {
+    resetChatForCategory(healthCategories[0].name); // Full reset goes to default "Symptoms" category
+  }
   
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
     setMessages(prev => [...prev, { ...message, id: message.sender + '-' + Date.now(), timestamp: new Date() }]);
   };
 
+  const handleCategorySelect = (categoryName: string) => {
+    resetChatForCategory(categoryName);
+  };
+
   const handleSymptomSelect = async (symptomName: string) => {
+    if (activeCategory !== "Symptoms") return; // Should not happen if UI is correct
+
     addMessage({ sender: 'user', text: symptomName });
     setInitialSymptom(symptomName);
     setShowSymptomSelectionInChatArea(false); 
@@ -167,7 +211,16 @@ function HealthAssistChatContent() {
   };
 
   const handleUserResponse = async (responseText: string) => {
-    if (!initialSymptom || isTriageComplete || isLoading || awaitingEmailForBooking || showAppointmentDecisionButtons || showSymptomSelectionInChatArea) return;
+    if (activeCategory !== "Symptoms" || !initialSymptom || isTriageComplete || isLoading || awaitingEmailForBooking || showAppointmentDecisionButtons || showSymptomSelectionInChatArea) {
+        if (activeCategory !== "Symptoms") {
+             addMessage({ sender: 'user', text: responseText });
+             addMessage({ sender: 'bot', text: `Thank you for sharing. Support for ${activeCategory} is currently under development. Please select the 'Symptoms' category for our main triage service or check back later!` });
+             setIsTriageComplete(true); // End "conversation" for undeveloped categories
+             return;
+        }
+        return;
+    }
+
 
     addMessage({ sender: 'user', text: responseText });
     const currentActiveQuickReplies = activeQuickReplies; 
@@ -281,7 +334,7 @@ function HealthAssistChatContent() {
     const bookingConversationSummary = [...conversationHistory, `User (Email/Preferences): ${emailForBooking}`].join('\n');
     let userEmail = emailForBooking;
     let preferredDate;
-    // Enhanced regex to better capture email and separate preferences
+
     const emailAndDateRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*(?:for|on|around|next|,)?\s*(.*)/i;
     const emailOnlyRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i;
 
@@ -296,18 +349,12 @@ function HealthAssistChatContent() {
         const emailMatch = emailForBooking.match(emailOnlyRegex);
         if (emailMatch && emailMatch[0]) {
             userEmail = emailMatch[0];
-            // If only email is found, preferredDate remains undefined or user might add it in subsequent message
-            // This part of logic can be removed if the user is always prompted for date after email separately
             const potentialDatePart = emailForBooking.replace(userEmail, "").trim();
-            if (potentialDatePart.length > 3) { // Arbitrary length to consider it a date preference
+            if (potentialDatePart.length > 3) { 
                 preferredDate = potentialDatePart;
             }
-        } else {
-            // If no email found, userEmail remains the full input; likely an invalid entry.
-            // Toast or error already handled by `!emailForBooking.trim()` or could be enhanced.
         }
     }
-
 
     const bookingInput: BookAppointmentInput = {
       userEmail: userEmail, 
@@ -340,8 +387,8 @@ function HealthAssistChatContent() {
   
   const selectedSymptomData = initialSymptom ? commonSymptoms.find(s => s.name === initialSymptom) : null;
 
-  const showQuickRepliesInChat = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea;
-  const showChatInputInChat = initialSymptom && !isTriageComplete && !isLoading && !showQuickRepliesInChat && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea;
+  const showQuickRepliesInChat = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea && activeCategory === "Symptoms";
+  const showChatInputInChat = (activeCategory === "Symptoms" ? (initialSymptom && !isTriageComplete) : !isTriageComplete) && !isLoading && !showQuickRepliesInChat && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea;
 
 
   return (
@@ -350,15 +397,31 @@ function HealthAssistChatContent() {
         <SidebarHeader className="p-4 border-b flex items-center justify-center">
            <BotIcon className="h-7 w-7 text-primary group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
         </SidebarHeader>
-        <SidebarContent className="p-0">
-          {initialSymptom && (
-             <div className="p-4 space-y-3">
+        <SidebarContent className="p-2">
+          <SidebarMenu>
+            {healthCategories.map((category) => (
+              <SidebarMenuItem key={category.name}>
+                <SidebarMenuButton
+                  onClick={() => handleCategorySelect(category.name)}
+                  isActive={activeCategory === category.name}
+                  tooltip={category.name}
+                  className="w-full"
+                >
+                  <category.icon className="h-5 w-5" />
+                  <span className="group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">{category.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+          
+          {initialSymptom && activeCategory === "Symptoms" && (
+             <div className="p-2 mt-auto border-t">
                <p className="text-sm font-medium text-foreground group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Current Triage:</p>
-               <div className={`flex items-center gap-2 p-2 border rounded-md ${sidebarState === 'collapsed' && !isMobile ? 'justify-center' : ''}`}>
+               <div className={`flex items-center gap-2 p-2 border rounded-md mt-1 ${sidebarState === 'collapsed' && !isMobile ? 'justify-center' : ''}`}>
                  {selectedSymptomData?.icon && <selectedSymptomData.icon className={`h-6 w-6 text-primary ${sidebarState === 'collapsed' && !isMobile ? '' : 'h-5 w-5'}`} />}
                  <span className="text-sm group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">{initialSymptom}</span>
                </div>
-               <Button variant="outline" size="sm" onClick={resetChat} className="w-full group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">
+               <Button variant="outline" size="sm" onClick={resetChat} className="w-full mt-2 group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">
                  Start New Triage
                </Button>
                 {sidebarState === 'collapsed' && !isMobile && (
@@ -375,7 +438,6 @@ function HealthAssistChatContent() {
         <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden">
           <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
             <SidebarTrigger className="mr-1" />
-            {/* BotIcon removed from here */}
             <h1 className="text-2xl font-semibold">Symptom Scout AI</h1>
           </header>
 
@@ -388,7 +450,7 @@ function HealthAssistChatContent() {
 
           <Separator />
 
-          {showSymptomSelectionInChatArea && (
+          {showSymptomSelectionInChatArea && activeCategory === "Symptoms" && (
             <div className="p-4 border-t bg-card">
               <p className="text-sm text-muted-foreground mb-3 text-center">
                 Select your primary symptom:
@@ -406,7 +468,7 @@ function HealthAssistChatContent() {
             </div>
           )}
 
-          {awaitingEmailForBooking && !isTriageComplete && (
+          {awaitingEmailForBooking && !isTriageComplete && activeCategory === "Symptoms" && (
             <div className="p-4 border-t bg-card space-y-3">
               <Label htmlFor="emailForBookingInput" className="text-sm font-medium text-foreground">
                 Enter your email address. You can also mention preferred dates/times (e.g., "myemail@example.com for next Tuesday morning"):
@@ -433,7 +495,7 @@ function HealthAssistChatContent() {
             </div>
           )}
 
-          {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
+          {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && activeCategory === "Symptoms" && (
             <div className="p-4 bg-card border-t">
               <p className="text-sm text-muted-foreground mb-3 text-center">
                 An appointment is recommended. What would you like to do?
@@ -489,17 +551,31 @@ function HealthAssistChatContent() {
           )}
 
           {showChatInputInChat && (
-            <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
+            <ChatInput 
+                onSubmit={handleUserResponse} 
+                disabled={isLoading || (activeCategory !== "Symptoms" && !initialSymptom)} 
+                placeholder={activeCategory !== "Symptoms" && !initialSymptom ? "Describe your concern..." : "Type your response..."}
+            />
           )}
           
           {isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons && !showSymptomSelectionInChatArea && (
             <div className="p-4 bg-background border-t text-center">
-              <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start over by using the sidebar or clicking below.</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                {activeCategory === "Symptoms" ? "Triage complete." : `Thank you for reaching out about ${activeCategory}.`} You can start over by selecting a category from the sidebar or clicking below.
+              </p>
               <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                Start New Triage
+                Start New Chat
               </Button>
             </div>
           )}
+           {isTriageComplete && activeCategory !== "Symptoms" && (
+             <div className="p-4 bg-background border-t text-center">
+                <p className="text-sm text-muted-foreground mb-2">Support for {activeCategory} is developing. Try 'Symptoms' or check back!</p>
+                 <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                   Start New Chat
+                 </Button>
+             </div>
+           )}
         </div>
       </SidebarInset>
     </>
@@ -513,3 +589,4 @@ export default function HealthAssistPage() {
     </SidebarProvider>
   );
 }
+
