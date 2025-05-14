@@ -485,7 +485,7 @@ function HealthAssistChatContent() {
     <>
       <Sidebar side="left" collapsible="icon" className="border-r hidden md:flex md:flex-col bg-card">
         <SidebarHeader className="p-4 border-b flex items-center justify-center">
-           <PanelLeft className="h-7 w-7 text-primary group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
+           {/* Removed PanelLeft icon as per user request */}
         </SidebarHeader>
         <SidebarContent className="p-2">
           <SidebarMenu>
