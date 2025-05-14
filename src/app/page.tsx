@@ -15,7 +15,8 @@ import {
   Wind, 
   HeartPulse, 
   PersonStanding, 
-  CloudDrizzle 
+  CloudDrizzle,
+  PanelLeft // For SidebarTrigger if not default
 } from 'lucide-react';
 import type { Message, SymptomOption } from '@/types';
 import { getAiTriageResponse, bookAppointmentAction } from './actions';
@@ -29,6 +30,15 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from "@/hooks/use-toast";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarInset,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar';
 
 // Inline SVG for Lungs icon as it's not in lucide-react
 const LungsIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -70,7 +80,7 @@ const commonSymptoms: SymptomOption[] = [
 
 const MAX_CONVERSATION_TURNS = 5; 
 
-export default function HealthAssistPage() {
+function HealthAssistChatContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [initialSymptom, setInitialSymptom] = useState<string | null>(null);
@@ -84,9 +94,9 @@ export default function HealthAssistPage() {
   const [isLoadingBooking, setIsLoadingBooking] = useState(false);
   const [showAppointmentDecisionButtons, setShowAppointmentDecisionButtons] = useState(false);
 
-
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const { toast } = useToast();
+  const { state: sidebarState, isMobile } = useSidebar();
 
   useEffect(() => {
     resetChat();
@@ -101,7 +111,7 @@ export default function HealthAssistPage() {
       {
         id: 'welcome-' + Date.now(),
         sender: 'bot',
-        text: "Hello! I'm HealthAssist. I can help you understand your symptoms. Please select a primary symptom to begin:",
+        text: "Welcome to HealthAssist! Please select a symptom from the left panel to begin your triage.",
         timestamp: new Date(),
       }
     ]);
@@ -127,6 +137,8 @@ export default function HealthAssistPage() {
     setIsLoading(true);
     setActiveQuickReplies(undefined); 
     setShowAppointmentDecisionButtons(false);
+    // Remove welcome message if it's the first user action
+    setMessages(prev => prev.filter(msg => !(msg.id.startsWith('welcome') && prev.length > 1)));
     addMessage({ sender: 'bot', text: 'Thinking...', isLoading: true });
 
     try {
@@ -158,7 +170,6 @@ export default function HealthAssistPage() {
     const currentActiveQuickReplies = activeQuickReplies; 
     setActiveQuickReplies(undefined); 
 
-    // Handle direct booking initiation from AI's quick replies
     if (!showAppointmentDecisionButtons && (responseText.toLowerCase().includes("schedule") || responseText.toLowerCase().includes("book") || responseText.toLowerCase().includes("help schedule"))) {
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
@@ -173,7 +184,6 @@ export default function HealthAssistPage() {
         }
     }
 
-    // Handle "I'll manage myself" from AI's quick replies
     if (!showAppointmentDecisionButtons && responseText.toLowerCase().includes("i'll manage it")) { 
         const relevantContextMessage = messages.slice().reverse().find(
             m => (m.sender === 'bot' || m.sender === 'system') && m.aiResponse?.urgency === 'Appointment Needed'
@@ -224,9 +234,8 @@ export default function HealthAssistPage() {
       } else if (currentTurn + 1 >= MAX_CONVERSATION_TURNS) {
         shouldCompleteAiQuestioningPhase = true;
       } else if (currentAiResponse.urgency === 'Appointment Needed') {
-        // If not asking about booking directly, but appointment is needed, then show outcome and decision buttons.
         shouldCompleteAiQuestioningPhase = true;
-      } else { // Non-Urgent
+      } else { 
         if (isOutcomeFinalSounding || (hasQuestionEnded && currentAiResponse.nextQuestion.trim() !== "")) {
           shouldCompleteAiQuestioningPhase = true;
         }
@@ -247,7 +256,6 @@ export default function HealthAssistPage() {
          setActiveQuickReplies(aiResponse.quickReplies?.length ? aiResponse.quickReplies : undefined);
       }
 
-
     } catch (error) {
       console.error("User response error:", error);
       setMessages(prev => prev.filter(m => !m.isLoading));
@@ -267,11 +275,10 @@ export default function HealthAssistPage() {
     addMessage({ sender: 'user', text: `My email for booking: ${emailForBooking}` });
     addMessage({ sender: 'bot', text: 'Attempting to book your appointment...', isLoading: true });
   
-    // Append the email (and any preferences typed with it) to the conversation history for the booking flow
     const bookingConversationSummary = [...conversationHistory, `User (Email/Preferences): ${emailForBooking}`].join('\n');
 
     const bookingInput: BookAppointmentInput = {
-      userEmail: emailForBooking.split(' ')[0], // Attempt to extract just email if user typed more
+      userEmail: emailForBooking.split(' ')[0], 
       symptoms: initialSymptom,
       conversationSummary: bookingConversationSummary,
     };
@@ -288,7 +295,6 @@ export default function HealthAssistPage() {
       setShowAppointmentDecisionButtons(false);
       setConversationHistory(prev => [...prev, `AI: ${bookingResponse.confirmationMessage}`]);
 
-
     } catch (error) {
       console.error("Booking submission error:", error);
       setMessages(prev => prev.filter(m => !m.isLoading));
@@ -299,138 +305,177 @@ export default function HealthAssistPage() {
     }
   };
   
-  const showSymptomSelector = !initialSymptom && !isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
-  const showQuickReplies = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
-  const showChatInput = initialSymptom && !isTriageComplete && !isLoading && !showQuickReplies && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
-
+  const showSymptomSelectorInSidebar = !initialSymptom && !isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
+  const showQuickRepliesInChat = activeQuickReplies && activeQuickReplies.length > 0 && !isTriageComplete && !isLoading && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
+  const showChatInputInChat = initialSymptom && !isTriageComplete && !isLoading && !showQuickRepliesInChat && !awaitingEmailForBooking && !showAppointmentDecisionButtons;
+  const selectedSymptomData = initialSymptom ? commonSymptoms.find(s => s.name === initialSymptom) : null;
 
   return (
-    <div className="flex flex-col h-screen bg-background max-w-4xl mx-auto shadow-2xl rounded-lg overflow-hidden">
-      <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
-        <BotIcon className="h-8 w-8" />
-        <h1 className="text-2xl font-semibold">HealthAssist Chat</h1>
-      </header>
+    <>
+      <Sidebar side="left" collapsible="icon" className="border-r hidden md:flex md:flex-col bg-card">
+        <SidebarHeader className="p-4 border-b">
+          <h2 className="text-lg font-semibold group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Symptom Helper</h2>
+           <BotIcon className="h-7 w-7 text-primary hidden group-[[data-sidebar=sidebar][data-collapsible=icon]]:block mx-auto" />
+        </SidebarHeader>
+        <SidebarContent className="p-0">
+          {showSymptomSelectorInSidebar && (
+            <div className="p-4">
+              <p className="text-sm text-muted-foreground mb-3 group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Select your primary symptom:</p>
+              <div className={`flex flex-wrap gap-2 ${sidebarState === 'collapsed' && !isMobile ? 'justify-center' : 'justify-start'}`}>
+                {commonSymptoms.map((symptom) => (
+                  <SymptomButton 
+                    key={symptom.name} 
+                    symptom={symptom} 
+                    onSelect={handleSymptomSelect}
+                    disabled={isLoading}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {!showSymptomSelectorInSidebar && initialSymptom && (
+             <div className="p-4 space-y-3">
+               <p className="text-sm font-medium text-foreground group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">Current Triage:</p>
+               <div className={`flex items-center gap-2 p-2 border rounded-md ${sidebarState === 'collapsed' && !isMobile ? 'justify-center' : ''}`}>
+                 {selectedSymptomData?.icon && <selectedSymptomData.icon className={`h-6 w-6 text-primary ${sidebarState === 'collapsed' && !isMobile ? '' : 'h-5 w-5'}`} />}
+                 <span className="text-sm group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">{initialSymptom}</span>
+               </div>
+               <Button variant="outline" size="sm" onClick={resetChat} className="w-full group-[[data-sidebar=sidebar][data-collapsible=icon]]:hidden">
+                 Start New Triage
+               </Button>
+                {sidebarState === 'collapsed' && !isMobile && (
+                    <Button variant="outline" size="icon" onClick={resetChat} className="w-full mt-2">
+                        <PanelLeft className="h-4 w-4" /> 
+                    </Button>
+                )}
+             </div>
+          )}
+        </SidebarContent>
+      </Sidebar>
 
-      <ScrollArea className="flex-grow p-4 space-y-4 bg-secondary/30">
-        {messages.map((msg) => (
-          <ChatMessage key={msg.id} message={msg} />
-        ))}
-        <div ref={messagesEndRef} />
-      </ScrollArea>
+      <SidebarInset>
+        <div className="flex flex-col h-screen bg-background shadow-xl overflow-hidden"> {/* Removed max-w-4xl, mx-auto, rounded-lg. h-screen fills parent (SidebarInset) */}
+          <header className="bg-primary text-primary-foreground p-4 flex items-center space-x-3 shadow-md">
+            <SidebarTrigger className="mr-1" /> {/* Sidebar trigger */}
+            <BotIcon className="h-8 w-8" />
+            <h1 className="text-2xl font-semibold">HealthAssist Chat</h1>
+          </header>
 
-      <Separator />
-
-      {awaitingEmailForBooking && !isTriageComplete && (
-        <div className="p-4 border-t bg-card space-y-3">
-          <Label htmlFor="emailForBookingInput" className="text-sm font-medium text-foreground">
-            Enter your email address. You can also mention preferred dates/times (e.g., "myemail@example.com for next Tuesday morning"):
-          </Label>
-          <div className="flex items-center space-x-2">
-            <Input
-              id="emailForBookingInput"
-              type="text" // Changed to text to allow preferences
-              value={emailForBooking}
-              onChange={(e) => setEmailForBooking(e.target.value)}
-              placeholder="your.email@example.com, preferred time..."
-              disabled={isLoadingBooking}
-              className="flex-grow rounded-full shadow-sm"
-              aria-label="Email and preferences for booking"
-            />
-            <Button 
-              onClick={handleEmailSubmitForBooking} 
-              disabled={isLoadingBooking || !emailForBooking.trim()}
-              className="rounded-full bg-accent hover:bg-accent/90 text-accent-foreground"
-            >
-              {isLoadingBooking ? "Submitting..." : "Submit Email"}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {showSymptomSelector && (
-        <div className="p-4 bg-background">
-          <p className="text-sm text-muted-foreground mb-3 text-center">Select a symptom to start:</p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {commonSymptoms.map((symptom) => (
-              <SymptomButton 
-                key={symptom.name} 
-                symptom={symptom} 
-                onSelect={handleSymptomSelect}
-                disabled={isLoading}
-              />
+          <ScrollArea className="flex-grow p-4 space-y-4 bg-secondary/30">
+            {messages.map((msg) => (
+              <ChatMessage key={msg.id} message={msg} />
             ))}
-          </div>
-        </div>
-      )}
+            <div ref={messagesEndRef} />
+          </ScrollArea>
 
-      {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
-        <div className="p-4 bg-card border-t">
-          <p className="text-sm text-muted-foreground mb-3 text-center">
-            An appointment is recommended. What would you like to do?
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Button
-              onClick={() => {
-                setShowAppointmentDecisionButtons(false);
-                setAwaitingEmailForBooking(true);
-                addMessage({ sender: 'user', text: "I'd like to book an appointment." });
-                addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address. If you have a preferred date or time (e.g., 'next Tuesday morning' or 'tomorrow around 2 PM'), please include it with your email or as a separate message right after." });
-                setConversationHistory(prev => [...prev, `User: Wants to book appointment`, `AI: Please provide your email address and any date/time preferences.`]);
-              }}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
-            >
-              Book Now
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                addMessage({ sender: 'user', text: "I'll manage the appointment myself." });
-                addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
-                setShowAppointmentDecisionButtons(false);
-                setIsTriageComplete(true);
-                setConversationHistory(prev => [...prev, `User: I'll manage it`, `AI: Okay. Please monitor your symptoms...`]);
-              }}
-              className="shadow-md"
-            >
-              I'll Manage Myself
-            </Button>
-          </div>
-        </div>
-      )}
+          <Separator />
 
-      {showQuickReplies && (
-         <div className="p-4 bg-card border-t">
-          <p className="text-sm text-muted-foreground mb-2 text-center">Select a response:</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {activeQuickReplies.map((reply) => (
-              <Button
-                key={reply}
-                variant="outline"
-                size="sm"
-                onClick={() => handleUserResponse(reply)}
-                disabled={isLoading}
-                className="shadow-sm hover:shadow-md transition-shadow"
-              >
-                {reply}
+          {awaitingEmailForBooking && !isTriageComplete && (
+            <div className="p-4 border-t bg-card space-y-3">
+              <Label htmlFor="emailForBookingInput" className="text-sm font-medium text-foreground">
+                Enter your email address. You can also mention preferred dates/times (e.g., "myemail@example.com for next Tuesday morning"):
+              </Label>
+              <div className="flex items-center space-x-2">
+                <Input
+                  id="emailForBookingInput"
+                  type="text"
+                  value={emailForBooking}
+                  onChange={(e) => setEmailForBooking(e.target.value)}
+                  placeholder="your.email@example.com, preferred time..."
+                  disabled={isLoadingBooking}
+                  className="flex-grow rounded-full shadow-sm"
+                  aria-label="Email and preferences for booking"
+                />
+                <Button 
+                  onClick={handleEmailSubmitForBooking} 
+                  disabled={isLoadingBooking || !emailForBooking.trim()}
+                  className="rounded-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                >
+                  {isLoadingBooking ? "Submitting..." : "Submit Email"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Symptom selector is now in the sidebar */}
+
+          {showAppointmentDecisionButtons && !awaitingEmailForBooking && !isTriageComplete && (
+            <div className="p-4 bg-card border-t">
+              <p className="text-sm text-muted-foreground mb-3 text-center">
+                An appointment is recommended. What would you like to do?
+              </p>
+              <div className="flex flex-wrap justify-center gap-3">
+                <Button
+                  onClick={() => {
+                    setShowAppointmentDecisionButtons(false);
+                    setAwaitingEmailForBooking(true);
+                    addMessage({ sender: 'user', text: "I'd like to book an appointment." });
+                    addMessage({ sender: 'bot', text: "Okay, to help schedule an appointment, please provide your email address. If you have a preferred date or time (e.g., 'next Tuesday morning' or 'tomorrow around 2 PM'), please include it with your email or as a separate message right after." });
+                    setConversationHistory(prev => [...prev, `User: Wants to book appointment`, `AI: Please provide your email address and any date/time preferences.`]);
+                  }}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+                >
+                  Book Now
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    addMessage({ sender: 'user', text: "I'll manage the appointment myself." });
+                    addMessage({ sender: 'bot', text: "Okay. Please monitor your symptoms and contact a healthcare provider if they worsen or if you have further concerns. You can start a new chat if anything changes." });
+                    setShowAppointmentDecisionButtons(false);
+                    setIsTriageComplete(true);
+                    setConversationHistory(prev => [...prev, `User: I'll manage it`, `AI: Okay. Please monitor your symptoms...`]);
+                  }}
+                  className="shadow-md"
+                >
+                  I'll Manage Myself
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {showQuickRepliesInChat && (
+            <div className="p-4 bg-card border-t">
+              <p className="text-sm text-muted-foreground mb-2 text-center">Select a response:</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {activeQuickReplies.map((reply) => (
+                  <Button
+                    key={reply}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleUserResponse(reply)}
+                    disabled={isLoading}
+                    className="shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    {reply}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showChatInputInChat && (
+            <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
+          )}
+          
+          {isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons && (
+            <div className="p-4 bg-background border-t text-center">
+              <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start over from the sidebar if needed.</p>
+              <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                Start New Triage
               </Button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
-      )}
-
-      {showChatInput && (
-        <ChatInput onSubmit={handleUserResponse} disabled={isLoading} />
-      )}
-      
-      {isTriageComplete && !awaitingEmailForBooking && !showAppointmentDecisionButtons && (
-        <div className="p-4 bg-background border-t text-center">
-          <p className="text-sm text-muted-foreground mb-2">Triage complete. You can start a new session if needed.</p>
-          <Button onClick={resetChat} variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-            Start Over
-          </Button>
-        </div>
-      )}
-    </div>
+      </SidebarInset>
+    </>
   );
 }
 
+export default function HealthAssistPage() {
+  return (
+    <SidebarProvider defaultOpen={true}>
+      <HealthAssistChatContent />
+    </SidebarProvider>
+  );
+}
