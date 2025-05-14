@@ -3,9 +3,9 @@
 import { intelligentTriage, TriageInput, TriageOutput } from '@/ai/flows/ai-triage';
 import { bookAppointment, BookAppointmentInput, BookAppointmentOutput } from '@/ai/flows/book-appointment-flow';
 
-export async function getAiTriageResponse(symptom: string, previousResponses?: string): Promise<TriageOutput> {
+export async function getAiTriageResponse(symptom: string, previousResponses?: string, categoryName?: string): Promise<TriageOutput> {
   try {
-    const input: TriageInput = { symptoms: symptom };
+    const input: TriageInput = { symptoms: symptom, categoryName: categoryName };
     if (previousResponses && previousResponses.trim() !== "") {
       input.previousResponses = previousResponses;
     }

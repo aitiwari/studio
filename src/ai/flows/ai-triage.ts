@@ -25,6 +25,10 @@ const TriageInputSchema = z.object({
     .string()
     .optional()
     .describe('The previous responses from the user, forming a conversation history.'),
+  categoryName: z
+    .string()
+    .optional()
+    .describe('The category of health concern, e.g., Symptoms, Injury, Dental.'),
 });
 export type TriageInput = z.infer<typeof TriageInputSchema>;
 
@@ -60,9 +64,14 @@ const triagePrompt = ai.definePrompt({
   output: {
     schema: TriageOutputSchema,
   },
-  prompt: `You are an AI-powered triage chatbot. Your goal is to ask relevant questions to understand the user's health situation and then provide an urgency assessment and an outcome.
-
+  prompt: `You are an AI-powered triage chatbot.
+{{#if categoryName}}
+You are assisting with a concern related to '{{categoryName}}'. The user's specific issue in this category is: '{{{symptoms}}}'.
+Based on this '{{categoryName}}' issue, your goal is to ask relevant questions to understand the user's situation and then provide an urgency assessment and an outcome.
+{{else}}
+Your goal is to ask relevant questions to understand the user's health situation and then provide an urgency assessment and an outcome.
 User's initial symptom: {{{symptoms}}}
+{{/if}}
 
 {{#if previousResponses}}
 Conversation history:
@@ -70,9 +79,9 @@ Conversation history:
 {{/if}}
 
 Based on the information provided, do the following:
-1.  Ask the *next most relevant question* to help clarify the user's condition.
+1.  Ask the *next most relevant question* to help clarify the user's condition related to '{{{symptoms}}}'{{#if categoryName}} (within the '{{categoryName}}' context){{/if}}.
 2.  You MUST provide 2 to 4 short quick reply options (e.g., "Yes", "No", "Mild", "Severe") that are directly relevant to the question you are asking. The 'quickReplies' field is always required.
-3.  Determine the urgency: 'Urgent', 'Non-Urgent', or 'Appointment Needed'.
+3.  Determine the urgency: 'Urgent', 'Non-Urgent', 'Appointment Needed'.
 4.  Provide a concise outcome message for the user, explaining the next steps based on the urgency.
     - If urgency is 'Urgent', the outcome should stress seeking immediate medical attention.
     - If urgency is 'Non-Urgent', the outcome should suggest monitoring or self-care.
